@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#18332f">
+    <title>Funcionário | EG Automações Services</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body>
+    <main id="loginView" class="login-shell">
+      <section class="login-card">
+        <div class="brand">
+          <img src="/assets/logo.svg" alt="EG Automações Services">
+          <span>
+            <strong class="brand-title">EG Automações Services</strong>
+            <small class="brand-subtitle">App do funcionário</small>
+          </span>
+        </div>
+        <h1>Acesso do funcionário</h1>
+        <p>Entre com seu PIN para receber e atualizar os serviços.</p>
+        <form id="employeeLoginForm" class="grid">
+          <label class="field">
+            <span>PIN</span>
+            <input class="input" name="pin" inputmode="numeric" autocomplete="one-time-code" value="1234" required>
+          </label>
+          <details class="connection-details">
+            <summary><i data-lucide="server"></i>Conexão do servidor</summary>
+            <label class="field">
+              <span>URL do servidor central</span>
+              <input class="input" name="serverUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://seu-servidor.com">
+            </label>
+            <small>Use esta URL no app para receber serviços mesmo fora da rede da empresa.</small>
+          </details>
+          <button class="primary-button" type="submit"><i data-lucide="log-in"></i>Entrar</button>
+        </form>
+      </section>
+    </main>
+
+    <main id="appView" class="employee-app hidden">
+      <header class="employee-header">
+        <div class="employee-topbar">
+        <div class="brand">
+          <img src="/assets/logo.svg" alt="EG Automações Services">
+          <span>
+            <strong class="brand-title">EG Automações Services</strong>
+            <small id="employeeName" class="brand-subtitle">Funcionário</small>
+          </span>
+        </div>
+        <div class="topbar-actions">
+          <button id="notificationButton" class="ghost-button" type="button"><i data-lucide="bell"></i>Notificações</button>
+          <button id="refreshButton" class="ghost-button" type="button"><i data-lucide="refresh-cw"></i>Atualizar</button>
+          <button id="logoutButton" class="ghost-button" type="button"><i data-lucide="log-out"></i>Sair</button>
+        </div>
+        </div>
+        <nav class="employee-menu" aria-label="Menu do funcionario">
+          <a class="employee-menu-button" href="#employeeOverview"><i data-lucide="layout-dashboard"></i>Resumo</a>
+          <a class="employee-menu-button" href="#employeeTeams"><i data-lucide="users-round"></i>Equipes</a>
+          <a class="employee-menu-button" href="#scheduledSection"><i data-lucide="calendar-clock"></i>Agendados</a>
+          <a class="employee-menu-button" href="#progressSection"><i data-lucide="play-circle"></i>Iniciados</a>
+          <a class="employee-menu-button" href="#doneSection"><i data-lucide="check-circle-2"></i>Finalizados</a>
+        </nav>
+      </header>
+
+      <section class="employee-content">
+        <div id="employeeOverview" class="employee-summary anchor-target">
+          <section class="summary-lead">
+            <h1>Meus serviços</h1>
+            <p>Receba a agenda, inicie ao chegar e finalize quando concluir.</p>
+          </section>
+          <section class="stat">
+            <span>Agendados</span>
+            <strong id="scheduledCount">0</strong>
+          </section>
+          <section class="stat">
+            <span>Iniciados</span>
+            <strong id="progressCount">0</strong>
+          </section>
+          <section class="stat">
+            <span>Finalizados</span>
+            <strong id="doneCount">0</strong>
+          </section>
+        </div>
+
+        <section id="employeeTeams" class="panel employee-team-panel anchor-target">
+          <div class="panel-header">
+            <div>
+              <h2>Minhas equipes</h2>
+              <p>Veja o lider, os companheiros e os servicos vinculados a equipe.</p>
+            </div>
+          </div>
+          <div id="employeeTeamList" class="panel-body list"></div>
+        </section>
+
+        <div class="employee-sections">
+          <section id="scheduledSection" class="service-column anchor-target">
+            <div class="column-title">
+              <h2>Para iniciar</h2>
+              <span id="scheduledBadge" class="badge scheduled">0</span>
+            </div>
+            <div id="scheduledList" class="list"></div>
+          </section>
+
+          <section id="progressSection" class="service-column anchor-target">
+            <div class="column-title">
+              <h2>Em andamento</h2>
+              <span id="progressBadge" class="badge in_progress">0</span>
+            </div>
+            <div id="progressList" class="list"></div>
+          </section>
+
+          <section id="doneSection" class="service-column anchor-target">
+            <div class="column-title">
+              <h2>Concluídos</h2>
+              <span id="doneBadge" class="badge done">0</span>
+            </div>
+            <div id="doneList" class="list"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div id="toastZone" class="toast-zone" aria-live="polite"></div>
+    <script src="/vendor/socket.io/socket.io.min.js"></script>
+    <script src="/vendor/lucide/lucide.min.js"></script>
+    <script type="module" src="/env.js"></script>
+    <script type="module" src="/assets/runtime.js"></script>
+    <script type="module" src="/assets/icons.js"></script>
+    <script type="module" src="/assets/employee.js"></script>
+  </body>
+</html>

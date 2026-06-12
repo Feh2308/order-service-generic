@@ -1,0 +1,15 @@
+{
+  "appId": "com.egautomacoes.services",
+  "appName": "EG Automacoes Services",
+  "webDir": "frontend/dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#18332f"
+    }
+  }
+}

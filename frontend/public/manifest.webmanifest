@@ -1,0 +1,17 @@
+{
+  "name": "EG Automações Services",
+  "short_name": "EG Services",
+  "description": "Sistema de envio, acompanhamento e finalização de serviços em tempo real.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#18332f",
+  "icons": [
+    {
+      "src": "/assets/logo.svg",
+      "sizes": "128x128",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

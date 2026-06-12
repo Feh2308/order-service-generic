@@ -1,0 +1,63 @@
+{
+  "name": "eg-automacoes-services",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo EG Automacoes Services com frontend Vite e backend Express/Socket.IO.",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build": "npm run build:frontend",
+    "build:frontend": "npm --prefix frontend run build",
+    "start:backend": "npm --prefix backend start",
+    "check": "npm --prefix backend run check && npm --prefix frontend run check && node --check apps/desktop/main.js",
+    "desktop:home": "npm run build:frontend && electron apps/desktop/main.js",
+    "desktop:admin": "npm run build:frontend && set EG_APP_ROLE=admin&& electron apps/desktop/main.js",
+    "desktop:funcionario": "npm run build:frontend && set EG_APP_ROLE=funcionario&& electron apps/desktop/main.js",
+    "desktop:build": "npm run build:frontend && electron-builder --win",
+    "android:add": "cap add android",
+    "android:sync": "npm run build:frontend && cap sync android",
+    "android:build:debug": "npm run android:sync && powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:JAVA_HOME='C:\\Program Files\\Android\\Android Studio\\jbr'; $env:ANDROID_HOME=Join-Path $env:LOCALAPPDATA 'Android\\Sdk'; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\\android\\gradlew.bat -p android assembleDebug\"",
+    "android:open": "cap open android"
+  },
+  "keywords": [
+    "eg",
+    "automacoes",
+    "services",
+    "servicos",
+    "socket.io"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "build": {
+    "appId": "com.egautomacoes.services",
+    "productName": "EG Automacoes Services",
+    "executableName": "EGServices",
+    "disableAsarIntegrity": true,
+    "extraMetadata": {
+      "main": "apps/desktop/main.js"
+    },
+    "files": [
+      "apps/desktop/**/*",
+      "frontend/dist/**/*"
+    ],
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/core": "^8.4.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.0",
+    "electron": "^42.3.3",
+    "electron-builder": "^26.15.2"
+  }
+}

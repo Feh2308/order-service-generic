@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#18332f">
+    <title>Admin | EG Automações Services</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body>
+    <main id="loginView" class="login-shell">
+      <section class="login-card">
+        <div class="brand">
+          <img src="/assets/logo.svg" alt="EG Automações Services">
+          <span>
+            <strong class="brand-title">EG Automações Services</strong>
+            <small class="brand-subtitle">Painel administrativo</small>
+          </span>
+        </div>
+        <h1>Acesso do admin</h1>
+        <p>Entre para registrar, enviar e acompanhar os serviços da equipe.</p>
+        <form id="adminLoginForm" class="grid">
+          <label class="field">
+            <span>E-mail</span>
+            <input class="input" name="email" type="email" autocomplete="username" value="admin@egautomacoes.local" required>
+          </label>
+          <label class="field">
+            <span>Senha</span>
+            <input class="input" name="password" type="password" autocomplete="current-password" value="admin123" required>
+          </label>
+          <details class="connection-details">
+            <summary><i data-lucide="server"></i>Conexão do servidor</summary>
+            <label class="field">
+              <span>URL do servidor central</span>
+              <input class="input" name="serverUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://seu-servidor.com">
+            </label>
+            <small>Use esta URL no APK/EXE para acessar os mesmos dados de qualquer dispositivo.</small>
+          </details>
+          <button class="primary-button" type="submit"><i data-lucide="log-in"></i>Entrar</button>
+        </form>
+      </section>
+    </main>
+
+    <main id="appView" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <img src="/assets/logo.svg" alt="EG Automações Services">
+          <span>
+            <strong class="brand-title">EG Automações Services</strong>
+            <small class="brand-subtitle">Admin</small>
+          </span>
+        </div>
+        <nav class="nav" aria-label="Areas do admin">
+          <button class="nav-button active" type="button" data-tab="dashboard"><span class="nav-icon"><i data-lucide="layout-dashboard"></i></span>Painel</button>
+          <button class="nav-button" type="button" data-tab="clients"><span class="nav-icon"><i data-lucide="building-2"></i></span>Clientes</button>
+          <button class="nav-button" type="button" data-tab="materials"><span class="nav-icon"><i data-lucide="package-search"></i></span>Materiais</button>
+          <button class="nav-button" type="button" data-tab="teams"><span class="nav-icon"><i data-lucide="users-round"></i></span>Equipes</button>
+          <button class="nav-button" type="button" data-tab="tracking"><span class="nav-icon"><i data-lucide="kanban"></i></span>Acompanhamento</button>
+          <button class="nav-button" type="button" data-tab="services"><span class="nav-icon"><i data-lucide="clipboard-list"></i></span>Serviços</button>
+          <button class="nav-button" type="button" data-tab="employees"><span class="nav-icon"><i data-lucide="id-card"></i></span>Funcionários</button>
+        </nav>
+        <div class="sidebar-footer">
+          <span id="adminName">Administrador</span>
+          <button id="logoutButton" class="ghost-button" type="button"><i data-lucide="log-out"></i>Sair</button>
+        </div>
+      </aside>
+
+      <section class="content">
+        <header class="topbar">
+          <div>
+            <h1 id="pageTitle">Painel</h1>
+            <p id="pageSubtitle">Visão geral dos serviços em andamento.</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="notificationButton" class="ghost-button" type="button"><i data-lucide="bell"></i>Notificações</button>
+            <a class="ghost-button" href="/funcionario/" target="_blank" rel="noreferrer"><i data-lucide="smartphone"></i>App funcionário</a>
+          </div>
+        </header>
+
+        <section id="dashboardTab" class="tab-view">
+          <div id="statsGrid" class="grid dashboard-grid"></div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="panel-header">
+              <div>
+                <h2>Atividade recente</h2>
+                <p>Atualizações de envio, início e finalização.</p>
+              </div>
+            </div>
+            <div id="activityList" class="panel-body list"></div>
+          </div>
+        </section>
+
+        <section id="trackingTab" class="tab-view hidden">
+          <div id="statusOverview" class="status-overview"></div>
+          <div id="statusBoard" class="status-board"></div>
+        </section>
+
+        <section id="clientsTab" class="tab-view hidden">
+          <div class="grid two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 id="clientFormTitle">Novo cliente</h2>
+                  <p>Cadastre os clientes para agilizar o envio dos serviços.</p>
+                </div>
+              </div>
+              <form id="clientForm" class="panel-body form-grid">
+                <input type="hidden" name="id">
+                <label class="field full">
+                  <span>Nome do cliente</span>
+                  <input class="input" name="name" placeholder="Empresa ou pessoa" required>
+                </label>
+                <label class="field">
+                  <span>Contato</span>
+                  <input class="input" name="contact" placeholder="Nome do responsável">
+                </label>
+                <label class="field">
+                  <span>Telefone</span>
+                  <input class="input" name="phone" inputmode="tel">
+                </label>
+                <label class="field full">
+                  <span>E-mail</span>
+                  <input class="input" name="email" type="email">
+                </label>
+                <label class="field full">
+                  <span>Endereço</span>
+                  <input class="input" name="address" placeholder="Rua, número, bairro, cidade">
+                </label>
+                <label class="field full">
+                  <span>Observações</span>
+                  <textarea class="textarea" name="notes" placeholder="Ponto de referência, portaria, preferências..."></textarea>
+                </label>
+                <div class="field full form-actions">
+                  <button id="submitClientButton" class="primary-button" type="submit"><i data-lucide="save"></i>Cadastrar cliente</button>
+                  <button id="clearClientFormButton" class="ghost-button" type="button"><i data-lucide="eraser"></i>Limpar</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Clientes</h2>
+                  <p>Clientes ativos aparecem no cadastro de serviço.</p>
+                </div>
+              </div>
+              <div id="clientList" class="panel-body list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="materialsTab" class="tab-view hidden">
+          <div class="grid two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 id="materialFormTitle">Novo material</h2>
+                  <p>Cadastre peças por código para montar o romaneio do serviço.</p>
+                </div>
+              </div>
+              <form id="materialForm" class="panel-body form-grid">
+                <input type="hidden" name="id">
+                <label class="field">
+                  <span>Código</span>
+                  <input class="input" name="code" placeholder="Ex: MOT-220" required>
+                </label>
+                <label class="field">
+                  <span>Unidade</span>
+                  <input class="input" name="unit" placeholder="un, m, cx..." value="un">
+                </label>
+                <label class="field full">
+                  <span>Nome da peça/material</span>
+                  <input class="input" name="name" placeholder="Motor basculante, cabo, placa..." required>
+                </label>
+                <label class="field full">
+                  <span>Observações</span>
+                  <textarea class="textarea" name="notes" placeholder="Marca, compatibilidade, tensão, detalhes internos..."></textarea>
+                </label>
+                <div class="field full form-actions">
+                  <button id="submitMaterialButton" class="primary-button" type="submit"><i data-lucide="package-plus"></i>Cadastrar material</button>
+                  <button id="clearMaterialFormButton" class="ghost-button" type="button"><i data-lucide="eraser"></i>Limpar</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Materiais</h2>
+                  <p>Digite o código no serviço para buscar a peça cadastrada.</p>
+                </div>
+              </div>
+              <div id="materialList" class="panel-body list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="teamsTab" class="tab-view hidden">
+          <div class="grid two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 id="teamFormTitle">Nova equipe</h2>
+                  <p>Monte equipes, escolha um líder e envie serviços para todos os membros.</p>
+                </div>
+              </div>
+              <form id="teamForm" class="panel-body form-grid">
+                <input type="hidden" name="id">
+                <label class="field full">
+                  <span>Nome da equipe</span>
+                  <input class="input" name="name" placeholder="Ex: Instalação Zona Sul" required>
+                </label>
+                <label class="field full">
+                  <span>Líder responsável</span>
+                  <select id="teamLeaderSelect" class="input" name="leaderId" required>
+                    <option value="">Selecione o líder</option>
+                  </select>
+                </label>
+                <label class="field full">
+                  <span>Funcionários da equipe</span>
+                  <div id="teamEmployeeCheckboxes" class="checkbox-list"></div>
+                </label>
+                <div class="field full form-actions">
+                  <button id="submitTeamButton" class="primary-button" type="submit"><i data-lucide="users-round"></i>Cadastrar equipe</button>
+                  <button id="clearTeamFormButton" class="ghost-button" type="button"><i data-lucide="eraser"></i>Limpar</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Equipes</h2>
+                  <p>Funcionários são notificados individualmente quando entram em uma equipe.</p>
+                </div>
+              </div>
+              <div id="teamList" class="panel-body list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="servicesTab" class="tab-view hidden">
+          <div class="grid two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 id="serviceFormTitle">Novo serviço</h2>
+                  <p>Os funcionários selecionados recebem o serviço na hora.</p>
+                </div>
+              </div>
+              <form id="serviceForm" class="panel-body form-grid service-form-grid">
+                <input type="hidden" name="id">
+                <label class="field full">
+                  <span>Serviço</span>
+                  <input class="input" name="title" placeholder="Instalacao, manutencao, visita tecnica..." required>
+                </label>
+                <label class="field full">
+                  <span>Cliente cadastrado</span>
+                  <select id="clientSelect" class="input" name="clientId">
+                    <option value="">Cliente avulso</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Cliente</span>
+                  <input class="input" name="customer" placeholder="Nome do cliente">
+                </label>
+                <label class="field">
+                  <span>Local</span>
+                  <input class="input" name="location" placeholder="Empresa, casa, unidade..." required>
+                </label>
+                <label class="field">
+                  <span>Data</span>
+                  <input class="input" name="date" type="date" required>
+                </label>
+                <label class="field">
+                  <span>Horário</span>
+                  <input class="input" name="time" type="time" required>
+                </label>
+                <label class="field full">
+                  <span>Endereço</span>
+                  <input class="input" name="address" placeholder="Rua, numero, bairro, cidade" required>
+                </label>
+                <label class="field full">
+                  <span>Funcionários</span>
+                  <select id="teamSelect" class="input" name="teamId" style="margin-bottom: 10px;">
+                    <option value="">Sem equipe, selecionar manualmente</option>
+                  </select>
+                  <div id="employeeCheckboxes" class="checkbox-list"></div>
+                </label>
+                <div class="field full romaneio-box">
+                  <span>Romaneio de materiais</span>
+                  <div class="material-add-row">
+                    <input id="materialCodeInput" class="input" placeholder="Código do material">
+                    <input id="materialQuantityInput" class="input" type="number" min="1" step="1" value="1" aria-label="Quantidade">
+                    <input id="materialNotesInput" class="input" placeholder="Obs.">
+                    <button id="addMaterialToServiceButton" class="ghost-button" type="button"><i data-lucide="plus"></i>Adicionar</button>
+                  </div>
+                  <div id="materialPreview" class="material-preview"></div>
+                  <div id="serviceMaterialsList" class="list"></div>
+                </div>
+                <label class="field full">
+                  <span>Observações</span>
+                  <textarea class="textarea" name="notes" placeholder="Contato no local, detalhes do acesso, observações do serviço..."></textarea>
+                </label>
+                <div class="field full form-actions">
+                  <button id="submitServiceButton" class="primary-button" type="submit"><i data-lucide="send"></i>Enviar serviço</button>
+                  <button id="clearServiceFormButton" class="ghost-button" type="button"><i data-lucide="eraser"></i>Limpar</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Serviços</h2>
+                  <p>Filtre por cliente, período e status para consultar o histórico.</p>
+                </div>
+              </div>
+              <div class="panel-body filter-grid">
+                <label class="field">
+                  <span>Cliente</span>
+                  <select id="clientFilter" class="input">
+                    <option value="">Todos os clientes</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Equipe</span>
+                  <select id="teamFilter" class="input">
+                    <option value="">Todas as equipes</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>De</span>
+                  <input id="dateFromFilter" class="input" type="date">
+                </label>
+                <label class="field">
+                  <span>Até</span>
+                  <input id="dateToFilter" class="input" type="date">
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <select id="statusFilter" class="input" aria-label="Filtrar status">
+                    <option value="all">Todos</option>
+                    <option value="scheduled">Agendados</option>
+                    <option value="in_progress">Iniciados</option>
+                    <option value="done">Finalizados</option>
+                    <option value="cancelled">Cancelados</option>
+                  </select>
+                </label>
+                <button id="clearServiceFiltersButton" class="ghost-button filter-clear-button" type="button"><i data-lucide="filter-x"></i>Limpar filtros</button>
+              </div>
+              <div id="serviceList" class="panel-body list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="employeesTab" class="tab-view hidden">
+          <div class="grid two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Novo funcionário</h2>
+                  <p>O PIN libera o acesso no app do funcionário.</p>
+                </div>
+              </div>
+              <form id="employeeForm" class="panel-body form-grid">
+                <label class="field full">
+                  <span>Nome</span>
+                  <input class="input" name="name" required>
+                </label>
+                <label class="field full">
+                  <span>Telefone</span>
+                  <input class="input" name="phone">
+                </label>
+                <label class="field full">
+                  <span>PIN</span>
+                  <input class="input" name="pin" inputmode="numeric" minlength="4" placeholder="Ex: 2468" required>
+                </label>
+                <div class="field full">
+                  <button class="primary-button" type="submit"><i data-lucide="user-plus"></i>Cadastrar funcionário</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Equipe</h2>
+                  <p>Funcionários ativos aparecem no envio de serviços.</p>
+                </div>
+              </div>
+              <div id="employeeList" class="panel-body list"></div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div id="toastZone" class="toast-zone" aria-live="polite"></div>
+    <script src="/vendor/socket.io/socket.io.min.js"></script>
+    <script src="/vendor/lucide/lucide.min.js"></script>
+    <script type="module" src="/env.js"></script>
+    <script type="module" src="/assets/runtime.js"></script>
+    <script type="module" src="/assets/icons.js"></script>
+    <script type="module" src="/assets/admin.js"></script>
+  </body>
+</html>
