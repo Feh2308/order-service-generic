@@ -65,6 +65,7 @@ const JSON_LIMIT = env("JSON_LIMIT", "10mb");
 const HTTP_LOG_FORMAT = env("HTTP_LOG_FORMAT", NODE_ENV === "production" ? "combined" : "dev");
 const AUTH_TOKEN_TTL_HOURS = numberEnv("AUTH_TOKEN_TTL_HOURS", 24);
 const AUTH_TOKEN_TTL_MS = AUTH_TOKEN_TTL_HOURS > 0 ? AUTH_TOKEN_TTL_HOURS * 60 * 60 * 1000 : 0;
+const ADMIN_RESET_TOKEN = env("ADMIN_RESET_TOKEN", "");
 
 function isLocalOrigin(origin) {
   if (!origin) return false;
@@ -106,5 +107,6 @@ module.exports = {
   HTTP_LOG_FORMAT,
   AUTH_TOKEN_TTL_HOURS,
   AUTH_TOKEN_TTL_MS,
+  ADMIN_RESET_TOKEN,
   isOriginAllowed
 };

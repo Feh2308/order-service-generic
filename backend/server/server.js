@@ -234,6 +234,36 @@ app.post("/api/auth/employee", (req, res) => {
   res.json({ token, user });
 });
 
+app.post("/api/admin/emergency-reset", asyncRoute(async (req, res) => {
+  if (!config.ADMIN_RESET_TOKEN) {
+    return res.status(404).json({ error: "Reset emergencial desativado." });
+  }
+
+  const token = String(req.body?.token || req.headers["x-admin-reset-token"] || "").trim();
+  if (token !== config.ADMIN_RESET_TOKEN) {
+    return res.status(403).json({ error: "Token de reset invalido." });
+  }
+
+  const password = String(req.body?.password || "").trim();
+  if (password.length < 6) {
+    return res.status(400).json({ error: "A nova senha precisa ter pelo menos 6 caracteres." });
+  }
+
+  const email = String(req.body?.email || "admin@egautomacoes.local").trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    return res.status(400).json({ error: "Informe um e-mail valido." });
+  }
+
+  const user = await store.emergencyResetAdmin({
+    name: req.body?.name,
+    email,
+    password
+  });
+
+  if (!user) return res.status(404).json({ error: "Administrador nao encontrado." });
+  res.json({ ok: true, user });
+}));
+
 app.post("/api/auth/logout", auth(), (req, res) => {
   tokens.delete(req.token);
   res.json({ ok: true });

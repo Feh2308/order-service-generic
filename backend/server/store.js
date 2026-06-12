@@ -418,6 +418,26 @@ async function updateAdminAccount(adminId, payload = {}) {
   return publicAdmin(admin);
 }
 
+async function emergencyResetAdmin(payload = {}) {
+  const admin = db.admins[0];
+  if (!admin) return null;
+
+  const nextEmail = normalizeText(payload.email).toLowerCase() || "admin@egautomacoes.local";
+  const nextPassword = normalizeText(payload.password) || "admin123";
+  const nextName = normalizeText(payload.name) || admin.name || "Administrador EG";
+  const secret = hashSecret(nextPassword);
+
+  admin.name = nextName;
+  admin.email = nextEmail;
+  admin.passwordSalt = secret.salt;
+  admin.passwordHash = secret.hash;
+  admin.updatedAt = now();
+
+  await save(db);
+  await addEvent("admin.emergency_reset", `Acesso admin ${admin.email} resetado.`, { adminId: admin.id });
+  return publicAdmin(admin);
+}
+
 function findEmployeeByPin(pin) {
   return db.employees.find((employee) => {
     if (!employee.active) return false;
@@ -862,6 +882,7 @@ module.exports = {
   dashboard,
   findAdminByEmail,
   updateAdminAccount,
+  emergencyResetAdmin,
   findEmployeeByPin,
   createClient,
   updateClient,
