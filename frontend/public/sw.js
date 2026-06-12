@@ -1,4 +1,4 @@
-const CACHE_NAME = "eg-services-v9";
+const CACHE_NAME = "eg-services-v10";
 const ASSETS = [
   "/",
   "/index.html",

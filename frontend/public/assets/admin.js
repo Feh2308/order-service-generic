@@ -40,6 +40,7 @@ const pageText = {
 };
 
 pageText.tracking = ["Acompanhamento", "Servicos separados por agendados, iniciados, cancelados e finalizados."];
+pageText.settings = ["Configurações", "Atualize o acesso do administrador e a conexão."];
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -158,6 +159,7 @@ function showApp() {
   $("#loginView").classList.add("hidden");
   $("#appView").classList.remove("hidden");
   $("#adminName").textContent = state.user?.name || "Administrador";
+  renderSettings();
 }
 
 function switchTab(tab) {
@@ -167,6 +169,7 @@ function switchTab(tab) {
   $(`#${tab}Tab`).classList.remove("hidden");
   $("#pageTitle").textContent = pageText[tab][0];
   $("#pageSubtitle").textContent = pageText[tab][1];
+  if (tab === "settings") renderSettings();
 }
 
 function connectSocket() {
@@ -227,6 +230,7 @@ function upsertService(service) {
 async function loadMe() {
   const { user } = await api("/api/me");
   state.user = user;
+  renderSettings();
 }
 
 async function loadDashboard() {
@@ -308,6 +312,18 @@ function renderDashboard() {
         .join("")
     : `<div class="empty">Nenhuma atividade registrada ainda.</div>`;
   refreshIcons();
+}
+
+function renderSettings() {
+  const form = $("#adminSettingsForm");
+  if (form && state.user) {
+    form.elements.name.value = state.user.name || "";
+    form.elements.email.value = state.user.email || "";
+  }
+  const server = $("#settingsServerUrl");
+  if (server) {
+    server.textContent = window.EGRuntime?.getServerUrl?.() || "Servidor nao definido";
+  }
 }
 
 function renderClientSelect() {
@@ -1076,6 +1092,24 @@ async function handleEmployeeSubmit(event) {
   }
 }
 
+async function handleAdminSettingsSubmit(event) {
+  event.preventDefault();
+  const form = $("#adminSettingsForm");
+  const payload = Object.fromEntries(new FormData(form).entries());
+
+  try {
+    const { user } = await api("/api/admin/account", { method: "PATCH", body: payload });
+    state.user = user;
+    form.elements.currentPassword.value = "";
+    form.elements.newPassword.value = "";
+    form.elements.confirmPassword.value = "";
+    showApp();
+    toast("Configurações", "Acesso do admin atualizado.");
+  } catch (error) {
+    toast("Configurações", error.message, "error");
+  }
+}
+
 async function cancelService(serviceId) {
   const service = state.services.find((item) => item.id === serviceId);
   if (!service || !window.confirm(`Cancelar ${service.code}?`)) return;
@@ -1193,6 +1227,7 @@ function bindEvents() {
     renderServices();
   });
   $("#employeeForm").addEventListener("submit", handleEmployeeSubmit);
+  $("#adminSettingsForm").addEventListener("submit", handleAdminSettingsSubmit);
   $("#clientSelect").addEventListener("change", (event) => {
     const client = state.clients.find((item) => item.id === event.target.value);
     const form = $("#serviceForm");

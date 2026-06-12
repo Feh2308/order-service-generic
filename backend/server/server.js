@@ -243,6 +243,47 @@ app.get("/api/me", auth(), (req, res) => {
   res.json({ user: req.user });
 });
 
+app.patch("/api/admin/account", auth("admin"), asyncRoute(async (req, res) => {
+  const { name, email, currentPassword, newPassword, confirmPassword } = req.body || {};
+  const nextEmail = String(email || "").trim().toLowerCase();
+  const nextPassword = String(newPassword || "").trim();
+
+  if (!String(currentPassword || "").trim()) {
+    return res.status(400).json({ error: "Informe a senha atual." });
+  }
+  if (!String(name || "").trim()) {
+    return res.status(400).json({ error: "Informe o nome do administrador." });
+  }
+  if (!nextEmail || !nextEmail.includes("@")) {
+    return res.status(400).json({ error: "Informe um e-mail valido." });
+  }
+  if (nextPassword && nextPassword.length < 6) {
+    return res.status(400).json({ error: "A nova senha precisa ter pelo menos 6 caracteres." });
+  }
+  if (nextPassword && nextPassword !== String(confirmPassword || "")) {
+    return res.status(400).json({ error: "A confirmacao da senha nao confere." });
+  }
+
+  const user = await store.updateAdminAccount(req.user.id, {
+    name,
+    email: nextEmail,
+    currentPassword,
+    newPassword: nextPassword
+  });
+
+  if (!user) return res.status(404).json({ error: "Administrador nao encontrado." });
+  if (user.invalidPassword) return res.status(401).json({ error: "Senha atual invalida." });
+  if (user.emailTaken) return res.status(409).json({ error: "Ja existe outro admin com esse e-mail." });
+
+  const session = getSession(req.token);
+  if (session) {
+    session.name = user.name;
+    session.email = user.email;
+  }
+
+  res.json({ user });
+}));
+
 app.get("/api/dashboard", auth("admin"), (_req, res) => {
   res.json(store.dashboard());
 });

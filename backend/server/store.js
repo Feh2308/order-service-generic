@@ -385,6 +385,39 @@ function findAdminByEmail(email) {
   return db.admins.find((admin) => admin.email.toLowerCase() === normalized);
 }
 
+async function updateAdminAccount(adminId, payload = {}) {
+  const admin = db.admins.find((item) => item.id === adminId);
+  if (!admin) return null;
+
+  const currentPassword = normalizeText(payload.currentPassword);
+  if (!currentPassword || !verifySecret(currentPassword, admin.passwordSalt, admin.passwordHash)) {
+    return { invalidPassword: true };
+  }
+
+  if (payload.name !== undefined) {
+    const nextName = normalizeText(payload.name);
+    if (nextName) admin.name = nextName;
+  }
+
+  if (payload.email !== undefined) {
+    const nextEmail = normalizeText(payload.email).toLowerCase();
+    const existing = db.admins.find((item) => item.id !== admin.id && item.email.toLowerCase() === nextEmail);
+    if (existing) return { emailTaken: true };
+    if (nextEmail) admin.email = nextEmail;
+  }
+
+  if (payload.newPassword) {
+    const secret = hashSecret(normalizeText(payload.newPassword));
+    admin.passwordSalt = secret.salt;
+    admin.passwordHash = secret.hash;
+  }
+
+  admin.updatedAt = now();
+  await save(db);
+  await addEvent("admin.updated", `Acesso admin ${admin.email} atualizado.`, { adminId: admin.id });
+  return publicAdmin(admin);
+}
+
 function findEmployeeByPin(pin) {
   return db.employees.find((employee) => {
     if (!employee.active) return false;
@@ -828,6 +861,7 @@ module.exports = {
   publicService,
   dashboard,
   findAdminByEmail,
+  updateAdminAccount,
   findEmployeeByPin,
   createClient,
   updateClient,

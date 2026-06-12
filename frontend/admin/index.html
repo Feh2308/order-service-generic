@@ -24,11 +24,11 @@
         <form id="adminLoginForm" class="grid">
           <label class="field">
             <span>E-mail</span>
-            <input class="input" name="email" type="email" autocomplete="username" value="admin@egautomacoes.local" required>
+            <input class="input" name="email" type="email" autocomplete="username" placeholder="admin@empresa.com.br" required>
           </label>
           <label class="field">
             <span>Senha</span>
-            <input class="input" name="password" type="password" autocomplete="current-password" value="admin123" required>
+            <input class="input" name="password" type="password" autocomplete="current-password" required>
           </label>
           <details class="connection-details">
             <summary><i data-lucide="server"></i>Conexão do servidor</summary>
@@ -60,6 +60,7 @@
           <button class="nav-button" type="button" data-tab="tracking"><span class="nav-icon"><i data-lucide="kanban"></i></span>Acompanhamento</button>
           <button class="nav-button" type="button" data-tab="services"><span class="nav-icon"><i data-lucide="clipboard-list"></i></span>Serviços</button>
           <button class="nav-button" type="button" data-tab="employees"><span class="nav-icon"><i data-lucide="id-card"></i></span>Funcionários</button>
+          <button class="nav-button" type="button" data-tab="settings"><span class="nav-icon"><i data-lucide="settings"></i></span>Configurações</button>
         </nav>
         <div class="sidebar-footer">
           <span id="adminName">Administrador</span>
@@ -392,6 +393,61 @@
                 </div>
               </div>
               <div id="employeeList" class="panel-body list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="settingsTab" class="tab-view hidden">
+          <div class="grid two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Acesso do admin</h2>
+                  <p>Atualize o nome, e-mail de entrada e senha do administrador.</p>
+                </div>
+              </div>
+              <form id="adminSettingsForm" class="panel-body form-grid">
+                <label class="field full">
+                  <span>Nome do administrador</span>
+                  <input class="input" name="name" autocomplete="name" required>
+                </label>
+                <label class="field full">
+                  <span>E-mail de login</span>
+                  <input class="input" name="email" type="email" autocomplete="username" required>
+                </label>
+                <label class="field full">
+                  <span>Senha atual</span>
+                  <input class="input" name="currentPassword" type="password" autocomplete="current-password" required>
+                </label>
+                <label class="field">
+                  <span>Nova senha</span>
+                  <input class="input" name="newPassword" type="password" autocomplete="new-password" minlength="6">
+                </label>
+                <label class="field">
+                  <span>Confirmar nova senha</span>
+                  <input class="input" name="confirmPassword" type="password" autocomplete="new-password" minlength="6">
+                </label>
+                <div class="field full form-actions">
+                  <button class="primary-button" type="submit"><i data-lucide="save"></i>Salvar acesso</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Servidor conectado</h2>
+                  <p>Endereco usado por este painel para falar com a API.</p>
+                </div>
+              </div>
+              <div class="panel-body list">
+                <div class="employee-row">
+                  <div>
+                    <strong id="settingsServerUrl">Servidor</strong>
+                    <span>Use esta URL tambem nos apps instalados.</span>
+                  </div>
+                </div>
+              </div>
             </section>
           </div>
         </section>
