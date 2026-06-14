@@ -168,6 +168,11 @@ function hasClientSignature(payload) {
   return imageDataUrl.startsWith("data:image/");
 }
 
+function hasServicePhoto(payload, field) {
+  const imageDataUrl = String(payload?.[field]?.imageDataUrl || "").trim();
+  return imageDataUrl.startsWith("data:image/");
+}
+
 function broadcastService(eventName, service, message, previousEmployeeIds = []) {
   io.to("admins").emit(eventName, { service, message });
   const employeeIds = new Set([...(service.employeeIds || []), ...previousEmployeeIds]);
@@ -532,6 +537,9 @@ app.post("/api/services/:id/start", auth("employee"), asyncRoute(async (req, res
   if (!hasLocationProof(req.body || {}, "startLocation")) {
     return res.status(400).json({ error: "Informe a localizacao de inicio antes de iniciar." });
   }
+  if (!hasServicePhoto(req.body || {}, "beforePhoto")) {
+    return res.status(400).json({ error: "Tire ou anexe a foto de antes antes de iniciar." });
+  }
   const result = await store.startService(req.params.id, req.user.id, req.body || {});
   if (!result) return res.status(404).json({ error: "Servico nao encontrado." });
   if (result.forbidden) return res.status(403).json({ error: "Servico nao atribuido a este funcionario." });
@@ -549,6 +557,9 @@ app.post("/api/services/:id/finish", auth("employee"), asyncRoute(async (req, re
   }
   if (!hasClientSignature(req.body || {})) {
     return res.status(400).json({ error: "Colete a assinatura do cliente antes de finalizar." });
+  }
+  if (!hasServicePhoto(req.body || {}, "afterPhoto")) {
+    return res.status(400).json({ error: "Tire ou anexe a foto de depois antes de finalizar." });
   }
   const result = await store.finishService(req.params.id, req.user.id, req.body || {});
   if (!result) return res.status(404).json({ error: "Servico nao encontrado." });

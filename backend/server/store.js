@@ -160,6 +160,12 @@ function normalizeLoadedData(loaded) {
     if (!("startLocation" in service)) service.startLocation = null;
     if (!("finalLocation" in service)) service.finalLocation = null;
     if (!("clientSignature" in service)) service.clientSignature = null;
+    if (!service.servicePhotos || typeof service.servicePhotos !== "object") {
+      service.servicePhotos = { before: null, after: null };
+    }
+    if (!("before" in service.servicePhotos)) service.servicePhotos.before = null;
+    if (!("after" in service.servicePhotos)) service.servicePhotos.after = null;
+    if (!("reportPreference" in service)) service.reportPreference = null;
   });
   return loaded;
 }
@@ -718,6 +724,11 @@ async function createService(payload, adminId) {
     finishedBy: null,
     finalLocation: null,
     clientSignature: null,
+    servicePhotos: {
+      before: null,
+      after: null
+    },
+    reportPreference: null,
     cancelledAt: null
   };
 
@@ -805,6 +816,36 @@ function normalizeLocation(location) {
   };
 }
 
+function normalizeServicePhoto(photo, stage, employeeId) {
+  if (!photo || typeof photo !== "object") return null;
+  const imageDataUrl = normalizeText(photo.imageDataUrl);
+  if (!imageDataUrl.startsWith("data:image/")) return null;
+
+  const fallbackLabel = stage === "before" ? "Antes do servico" : "Depois do servico";
+  return {
+    stage,
+    label: normalizeText(photo.label) || fallbackLabel,
+    imageDataUrl,
+    capturedAt: normalizeText(photo.capturedAt) || now(),
+    capturedBy: employeeId,
+    fileName: normalizeText(photo.fileName)
+  };
+}
+
+function normalizeReportPreference(report, service, employeeId) {
+  if (!report || typeof report !== "object") return null;
+  const sendToClient = Boolean(report.sendToClient);
+  const client = service.clientId ? db.clients.find((item) => item.id === service.clientId) : null;
+  const clientEmail = normalizeText(report.clientEmail) || client?.email || "";
+
+  return {
+    sendToClient,
+    clientEmail,
+    requestedAt: now(),
+    requestedBy: employeeId
+  };
+}
+
 async function startService(serviceId, employeeId, payload = {}) {
   const service = db.services.find((item) => item.id === serviceId);
   if (!service) return null;
@@ -817,6 +858,8 @@ async function startService(serviceId, employeeId, payload = {}) {
   service.startedAt = now();
   service.startedBy = employeeId;
   service.startLocation = normalizeLocation(payload.startLocation);
+  service.servicePhotos = service.servicePhotos || { before: null, after: null };
+  service.servicePhotos.before = normalizeServicePhoto(payload.beforePhoto, "before", employeeId);
   service.updatedAt = now();
   await save(db);
 
@@ -855,6 +898,9 @@ async function finishService(serviceId, employeeId, payload = {}) {
   service.finishedBy = employeeId;
   service.finalLocation = normalizeLocation(payload.finalLocation);
   service.clientSignature = normalizeSignature(payload.signature, service);
+  service.servicePhotos = service.servicePhotos || { before: null, after: null };
+  service.servicePhotos.after = normalizeServicePhoto(payload.afterPhoto, "after", employeeId);
+  service.reportPreference = normalizeReportPreference(payload.report, service, employeeId);
   service.updatedAt = now();
   await save(db);
 

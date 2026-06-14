@@ -495,6 +495,33 @@ function signatureBlock(signature) {
   `;
 }
 
+function photoBlock(servicePhotos = {}) {
+  const photos = [
+    { title: "Foto antes", photo: servicePhotos.before },
+    { title: "Foto depois", photo: servicePhotos.after }
+  ].filter((item) => item.photo?.imageDataUrl);
+
+  if (!photos.length) return "";
+
+  return `
+    <div class="photo-summary">
+      <strong>Fotos do servico</strong>
+      <div class="photo-grid">
+        ${photos
+          .map(
+            ({ title, photo }) => `
+              <figure class="photo-card">
+                <img src="${escapeHTML(photo.imageDataUrl)}" alt="${escapeHTML(title)}">
+                <figcaption>${escapeHTML(title)} - ${escapeHTML(shortDate(photo.capturedAt))}</figcaption>
+              </figure>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
 function teamBlock(service) {
   if (!service.team) return "";
   const leaderName = service.team.leader?.name || "Sem líder";
@@ -508,10 +535,198 @@ function teamBlock(service) {
   `;
 }
 
+function reportMaterialsTable(materials = []) {
+  if (!materials.length) return `<p class="muted">Nenhum material informado.</p>`;
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Codigo</th>
+          <th>Material</th>
+          <th>Qtd.</th>
+          <th>Obs.</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${materials
+          .map(
+            (item) => `
+              <tr>
+                <td>${escapeHTML(item.code || "")}</td>
+                <td>${escapeHTML(item.name || "")}</td>
+                <td>${escapeHTML(formatQuantity(item.quantity || 1))} ${escapeHTML(item.unit || "un")}</td>
+                <td>${escapeHTML(item.notes || "")}</td>
+              </tr>
+            `
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function reportPhotoFigure(title, photo) {
+  if (!photo?.imageDataUrl) return `<div class="photo-empty">Sem ${escapeHTML(title.toLowerCase())} registrada.</div>`;
+  return `
+    <figure>
+      <img src="${escapeHTML(photo.imageDataUrl)}" alt="${escapeHTML(title)}">
+      <figcaption>${escapeHTML(title)} - ${escapeHTML(shortDate(photo.capturedAt))}</figcaption>
+    </figure>
+  `;
+}
+
+function buildReportHtml(service) {
+  const customerName = service.client?.name || service.customer || "Cliente nao informado";
+  const clientEmail = service.reportPreference?.clientEmail || service.client?.email || "";
+  const employeeNames = (service.employees || []).map((employee) => employee.name).join(", ") || "Sem funcionario";
+  const teamName = service.team?.name || "";
+  const beforePhoto = service.servicePhotos?.before;
+  const afterPhoto = service.servicePhotos?.after;
+  const signature = service.clientSignature;
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relatorio ${escapeHTML(service.code)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px; font-family: Arial, sans-serif; color: #17211f; background: #f6f8f7; }
+    .report { max-width: 980px; margin: 0 auto; background: #fff; border: 1px solid #d9e3df; border-radius: 8px; padding: 28px; }
+    .actions { position: sticky; top: 0; display: flex; justify-content: flex-end; gap: 10px; margin: -28px -28px 22px; padding: 12px; background: #eef5f1; border-bottom: 1px solid #d9e3df; }
+    button { border: 0; border-radius: 8px; padding: 10px 14px; color: #fff; background: #1f7a4d; font-weight: 700; cursor: pointer; }
+    header { display: flex; justify-content: space-between; gap: 18px; border-bottom: 2px solid #1f7a4d; padding-bottom: 18px; }
+    h1 { margin: 0 0 6px; font-size: 26px; }
+    h2 { margin: 26px 0 10px; font-size: 16px; color: #1f7a4d; }
+    p { margin: 4px 0; line-height: 1.45; }
+    .muted { color: #5f6f69; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    .box { border: 1px solid #d9e3df; border-radius: 8px; padding: 12px; background: #fbfdfc; }
+    .box strong { display: block; margin-bottom: 4px; font-size: 12px; color: #5f6f69; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #d9e3df; padding: 9px; text-align: left; vertical-align: top; }
+    th { background: #eef5f1; }
+    .photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    figure { margin: 0; border: 1px solid #d9e3df; border-radius: 8px; padding: 10px; background: #fbfdfc; }
+    figure img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: #f1f4f3; border-radius: 6px; }
+    figcaption { margin-top: 8px; color: #5f6f69; font-size: 12px; }
+    .signature img { max-width: 360px; max-height: 120px; object-fit: contain; border: 1px solid #d9e3df; border-radius: 8px; background: #fff; }
+    .photo-empty { border: 1px dashed #b7c7c0; border-radius: 8px; padding: 24px; color: #5f6f69; background: #fbfdfc; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .report { border: 0; padding: 0; }
+      .actions { display: none; }
+    }
+    @media (max-width: 720px) {
+      body { padding: 12px; }
+      .report { padding: 18px; }
+      .grid, .photos { grid-template-columns: 1fr; }
+      header { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <main class="report">
+    <div class="actions">
+      <button type="button" onclick="window.print()">Salvar / imprimir PDF</button>
+    </div>
+    <header>
+      <div>
+        <h1>Relatorio de servico</h1>
+        <p><strong>EG Automacoes Services</strong></p>
+        <p class="muted">${escapeHTML(service.code)} - ${escapeHTML(service.title || "")}</p>
+      </div>
+      <div>
+        <p><strong>Status:</strong> ${escapeHTML(statusLabels[service.status] || service.status)}</p>
+        <p><strong>Gerado em:</strong> ${escapeHTML(shortDate(new Date().toISOString()))}</p>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="box"><strong>Cliente/empresa</strong>${escapeHTML(customerName)}</div>
+      <div class="box"><strong>E-mail do cliente</strong>${escapeHTML(clientEmail || "Nao informado")}</div>
+      <div class="box"><strong>Data e horario</strong>${escapeHTML(formatDateTime(service))}</div>
+      <div class="box"><strong>Local</strong>${escapeHTML(service.location || "")}<br><span class="muted">${escapeHTML(service.address || "")}</span></div>
+      <div class="box"><strong>Responsaveis</strong>${escapeHTML(teamName ? `${teamName} - ${employeeNames}` : employeeNames)}</div>
+      <div class="box"><strong>Envio ao cliente</strong>${service.reportPreference?.sendToClient ? "Solicitado no encerramento" : "Nao solicitado no encerramento"}</div>
+    </section>
+
+    <h2>Descricao</h2>
+    <p>${escapeHTML(service.notes || "Sem observacoes.")}</p>
+
+    <h2>Materiais</h2>
+    ${reportMaterialsTable(service.materials || [])}
+
+    <h2>Comprovantes de localizacao</h2>
+    <section class="grid">
+      <div class="box"><strong>Inicio</strong>${escapeHTML(formatLocation(service.startLocation) || "Nao informado")}<br><span class="muted">${escapeHTML(shortDate(service.startLocation?.capturedAt))}</span></div>
+      <div class="box"><strong>Final</strong>${escapeHTML(formatLocation(service.finalLocation) || "Nao informado")}<br><span class="muted">${escapeHTML(shortDate(service.finalLocation?.capturedAt))}</span></div>
+    </section>
+
+    <h2>Fotos antes e depois</h2>
+    <section class="photos">
+      ${reportPhotoFigure("Foto antes", beforePhoto)}
+      ${reportPhotoFigure("Foto depois", afterPhoto)}
+    </section>
+
+    <h2>Assinatura do cliente</h2>
+    <section class="signature">
+      ${
+        signature?.imageDataUrl
+          ? `<p>${escapeHTML(signature.signerName || "Cliente")} - ${escapeHTML(shortDate(signature.signedAt))}</p><img src="${escapeHTML(signature.imageDataUrl)}" alt="Assinatura do cliente">`
+          : `<p class="muted">Sem assinatura registrada.</p>`
+      }
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+function openServiceReport(serviceId) {
+  const service = state.services.find((item) => item.id === serviceId);
+  if (!service) return;
+  const reportWindow = window.open("", "_blank");
+  if (!reportWindow) {
+    toast("Relatorio", "O navegador bloqueou a janela do relatorio.", "error");
+    return;
+  }
+  reportWindow.document.open();
+  reportWindow.document.write(buildReportHtml(service));
+  reportWindow.document.close();
+}
+
+function sendServiceReport(serviceId) {
+  const service = state.services.find((item) => item.id === serviceId);
+  if (!service) return;
+  const email = service.reportPreference?.clientEmail || service.client?.email || "";
+  if (!email) {
+    toast("Relatorio", "Cadastre o e-mail do cliente para preparar o envio.", "error");
+    return;
+  }
+
+  openServiceReport(serviceId);
+  const customerName = service.client?.name || service.customer || "cliente";
+  const subject = `Relatorio ${service.code} - ${customerName}`;
+  const body = [
+    `Ola, segue o relatorio do servico ${service.code}.`,
+    "",
+    `Cliente: ${customerName}`,
+    `Servico: ${service.title || ""}`,
+    `Data: ${formatDateTime(service)}`,
+    `Local: ${service.location || ""}`,
+    "",
+    "O relatorio completo com fotos, materiais, assinatura e localizacoes foi aberto no sistema para salvar em PDF e anexar a este e-mail."
+  ].join("\n");
+  window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  toast("Relatorio", "Relatorio aberto para salvar em PDF e e-mail preparado.");
+}
+
 function serviceCard(service) {
   const employeeNames = (service.employees || []).map((employee) => employee.name).join(", ");
   const customerName = service.client?.name || service.customer;
   const canAdminAct = !["done", "cancelled"].includes(service.status);
+  const canReport = service.status === "done";
 
   return `
     <article class="service-card">
@@ -533,7 +748,16 @@ function serviceCard(service) {
       ${service.notes ? `<p class="notes">${escapeHTML(service.notes)}</p>` : ""}
       ${locationBlock("Localização de início", service.startLocation)}
       ${locationBlock("Localização final", service.finalLocation)}
+      ${photoBlock(service.servicePhotos)}
       ${signatureBlock(service.clientSignature)}
+      ${
+        canReport
+          ? `<div class="row-actions">
+              <button class="ghost-button" type="button" data-action="open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>Salvar relatorio</button>
+              <button class="status-button" type="button" data-action="send-report" data-id="${escapeHTML(service.id)}"><i data-lucide="mail"></i>Enviar ao cliente</button>
+            </div>`
+          : ""
+      }
       ${
         canAdminAct
           ? `<div class="row-actions">
@@ -1245,6 +1469,12 @@ function bindEvents() {
     }
     if (button.dataset.action === "cancel-service") {
       cancelService(button.dataset.id);
+    }
+    if (button.dataset.action === "open-report") {
+      openServiceReport(button.dataset.id);
+    }
+    if (button.dataset.action === "send-report") {
+      sendServiceReport(button.dataset.id);
     }
   });
 

@@ -6,6 +6,9 @@ const state = {
   teams: [],
   pendingStartLocations: loadPendingStartLocations(),
   pendingFinalLocations: loadPendingFinalLocations(),
+  pendingBeforePhotos: loadPendingPhotos("egPendingBeforePhotos"),
+  pendingAfterPhotos: loadPendingPhotos("egPendingAfterPhotos"),
+  reportPreferences: loadReportPreferences(),
   signaturePads: new Map(),
   clockTimer: null
 };
@@ -89,6 +92,34 @@ function savePendingFinalLocations() {
   localStorage.setItem("egPendingFinalLocations", JSON.stringify(state.pendingFinalLocations));
 }
 
+function loadPendingPhotos(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function savePendingPhotos(key, photos) {
+  try {
+    localStorage.setItem(key, JSON.stringify(photos));
+  } catch {
+    toast("Foto", "A foto ficou grande demais para salvar localmente. Tente tirar uma foto mais leve.", "error");
+  }
+}
+
+function loadReportPreferences() {
+  try {
+    return JSON.parse(localStorage.getItem("egReportPreferences") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveReportPreferences() {
+  localStorage.setItem("egReportPreferences", JSON.stringify(state.reportPreferences));
+}
+
 function getPendingStartLocation(serviceId) {
   return state.pendingStartLocations[serviceId] || null;
 }
@@ -107,6 +138,45 @@ function setPendingFinalLocation(serviceId, location) {
   if (location) state.pendingFinalLocations[serviceId] = location;
   else delete state.pendingFinalLocations[serviceId];
   savePendingFinalLocations();
+}
+
+function getPendingBeforePhoto(serviceId) {
+  return state.pendingBeforePhotos[serviceId] || null;
+}
+
+function setPendingBeforePhoto(serviceId, photo) {
+  if (photo) state.pendingBeforePhotos[serviceId] = photo;
+  else delete state.pendingBeforePhotos[serviceId];
+  savePendingPhotos("egPendingBeforePhotos", state.pendingBeforePhotos);
+}
+
+function getPendingAfterPhoto(serviceId) {
+  return state.pendingAfterPhotos[serviceId] || null;
+}
+
+function setPendingAfterPhoto(serviceId, photo) {
+  if (photo) state.pendingAfterPhotos[serviceId] = photo;
+  else delete state.pendingAfterPhotos[serviceId];
+  savePendingPhotos("egPendingAfterPhotos", state.pendingAfterPhotos);
+}
+
+function getReportPreference(serviceId, service) {
+  const defaults = {
+    sendToClient: Boolean(service?.reportPreference?.sendToClient),
+    clientEmail: service?.reportPreference?.clientEmail || service?.client?.email || ""
+  };
+  return { ...defaults, ...(state.reportPreferences[serviceId] || {}) };
+}
+
+function setReportPreference(serviceId, patch) {
+  const current = state.reportPreferences[serviceId] || {};
+  state.reportPreferences[serviceId] = { ...current, ...patch };
+  saveReportPreferences();
+}
+
+function clearReportPreference(serviceId) {
+  delete state.reportPreferences[serviceId];
+  saveReportPreferences();
 }
 
 function formatLocation(location) {
@@ -129,6 +199,46 @@ function makeManualLocation(text) {
     manualText: value,
     mapsUrl: /^https?:\/\//i.test(value) ? value : "",
     capturedAt: new Date().toISOString()
+  };
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Nao foi possivel ler a foto."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Nao foi possivel preparar a foto."));
+    image.src = dataUrl;
+  });
+}
+
+async function fileToServicePhoto(file, stage) {
+  const original = await readFileAsDataUrl(file);
+  const image = await loadImage(original);
+  const maxSize = 1280;
+  const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0, width, height);
+  const imageDataUrl = canvas.toDataURL("image/jpeg", 0.78);
+  return {
+    stage,
+    label: stage === "before" ? "Antes do servico" : "Depois do servico",
+    imageDataUrl,
+    capturedAt: new Date().toISOString(),
+    fileName: file.name || ""
   };
 }
 
@@ -367,6 +477,33 @@ function signatureSummary(signature) {
   `;
 }
 
+function photoSummary(servicePhotos = {}) {
+  const photos = [
+    { title: "Foto antes", photo: servicePhotos.before },
+    { title: "Foto depois", photo: servicePhotos.after }
+  ].filter((item) => item.photo?.imageDataUrl);
+
+  if (!photos.length) return "";
+
+  return `
+    <div class="photo-summary">
+      <strong>Fotos do servico</strong>
+      <div class="photo-grid">
+        ${photos
+          .map(
+            ({ title, photo }) => `
+              <figure class="photo-card">
+                <img src="${escapeHTML(photo.imageDataUrl)}" alt="${escapeHTML(title)}">
+                <figcaption>${escapeHTML(title)} - ${escapeHTML(shortDate(photo.capturedAt))}</figcaption>
+              </figure>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
 function teamBlock(service) {
   if (!service.team) return "";
   const leaderName = service.team.leader?.name || "Sem lider";
@@ -396,12 +533,26 @@ function leaderProtocolNotice(service) {
 
 function startControls(service) {
   const location = getPendingStartLocation(service.id);
+  const beforePhoto = getPendingBeforePhoto(service.id);
   return `
     <div class="location-capture">
       <label class="field">
         <span>Localização de início</span>
         <input class="input" data-start-location-input data-id="${escapeHTML(service.id)}" value="${escapeHTML(formatLocation(location))}" placeholder="Cole o link do Maps, digite o local ou use GPS">
       </label>
+      <label class="field">
+        <span>Foto antes do servico</span>
+        <input class="input" type="file" accept="image/*" capture="environment" data-before-photo-input data-id="${escapeHTML(service.id)}">
+      </label>
+      ${
+        beforePhoto?.imageDataUrl
+          ? `<div class="photo-preview">
+              <img src="${escapeHTML(beforePhoto.imageDataUrl)}" alt="Foto antes do servico">
+              <span>Foto antes salva para envio.</span>
+              <button class="ghost-button compact-link" type="button" data-action="clear-before-photo" data-id="${escapeHTML(service.id)}"><i data-lucide="trash-2"></i>Remover</button>
+            </div>`
+          : ""
+      }
       <div class="row-actions">
         <button class="ghost-button" type="button" data-action="capture-start-location" data-id="${escapeHTML(service.id)}"><i data-lucide="map-pin"></i>Usar GPS</button>
         <button class="status-button" type="button" data-action="start" data-id="${escapeHTML(service.id)}"><i data-lucide="play"></i>Iniciar</button>
@@ -412,6 +563,8 @@ function startControls(service) {
 
 function finishControls(service) {
   const finalLocation = getPendingFinalLocation(service.id);
+  const afterPhoto = getPendingAfterPhoto(service.id);
+  const report = getReportPreference(service.id, service);
   return `
     <div class="finish-box">
       <div class="time-proof">
@@ -424,9 +577,32 @@ function finishControls(service) {
         <input class="input" data-final-location-input data-id="${escapeHTML(service.id)}" value="${escapeHTML(formatLocation(finalLocation))}" placeholder="Cole o link do Maps, digite o local ou use GPS">
       </label>
       <label class="field">
+        <span>Foto depois do servico</span>
+        <input class="input" type="file" accept="image/*" capture="environment" data-after-photo-input data-id="${escapeHTML(service.id)}">
+      </label>
+      ${
+        afterPhoto?.imageDataUrl
+          ? `<div class="photo-preview">
+              <img src="${escapeHTML(afterPhoto.imageDataUrl)}" alt="Foto depois do servico">
+              <span>Foto depois salva para finalizar.</span>
+              <button class="ghost-button compact-link" type="button" data-action="clear-after-photo" data-id="${escapeHTML(service.id)}"><i data-lucide="trash-2"></i>Remover</button>
+            </div>`
+          : ""
+      }
+      <label class="field">
         <span>Nome de quem assina</span>
         <input class="input" data-signer-name data-id="${escapeHTML(service.id)}" placeholder="Nome do cliente ou responsável">
       </label>
+      <div class="report-choice">
+        <label class="checkbox-item">
+          <input type="checkbox" data-report-send-input data-id="${escapeHTML(service.id)}" ${report.sendToClient ? "checked" : ""}>
+          <span>Preparar envio do relatorio ao cliente</span>
+        </label>
+        <label class="field">
+          <span>E-mail do cliente</span>
+          <input class="input" type="email" data-report-email-input data-id="${escapeHTML(service.id)}" value="${escapeHTML(report.clientEmail || "")}" placeholder="cliente@empresa.com.br">
+        </label>
+      </div>
       <div class="signature-pad-wrap">
         <canvas class="signature-pad" data-signature-pad data-id="${escapeHTML(service.id)}" width="620" height="190"></canvas>
         <div class="row-actions">
@@ -489,6 +665,7 @@ function serviceCard(service) {
       ${service.notes ? `<p class="notes">${escapeHTML(service.notes)}</p>` : ""}
       ${locationSummary("Localização de início", service.startLocation)}
       ${locationSummary("Localização final", service.finalLocation)}
+      ${photoSummary(service.servicePhotos)}
       ${signatureSummary(service.clientSignature)}
       ${action}
     </article>
@@ -524,6 +701,7 @@ function renderServices() {
 
 async function setServiceStatus(serviceId, action) {
   const endpoint = action === "start" ? "start" : "finish";
+  const currentService = state.services.find((service) => service.id === serviceId);
   if (action === "start" && !getPendingStartLocation(serviceId)) {
     toast("Localizacao", "Informe a localizacao de inicio antes de iniciar.", "error");
     return;
@@ -532,21 +710,40 @@ async function setServiceStatus(serviceId, action) {
     toast("Localizacao", "Informe a localizacao final antes de finalizar.", "error");
     return;
   }
+  if (action === "start" && !getPendingBeforePhoto(serviceId)) {
+    toast("Foto", "Tire ou anexe a foto de antes antes de iniciar.", "error");
+    return;
+  }
+  if (action === "finish" && !getPendingAfterPhoto(serviceId)) {
+    toast("Foto", "Tire ou anexe a foto de depois antes de finalizar.", "error");
+    return;
+  }
   const signature = action === "finish" ? signaturePayload(serviceId) : null;
   if (action === "finish" && !signature) {
     toast("Assinatura", "Peça para o cliente assinar no campo antes de finalizar.", "error");
     return;
   }
+  const report = getReportPreference(serviceId, currentService);
   const body = action === "start"
-    ? { startLocation: getPendingStartLocation(serviceId) }
-    : { finalLocation: getPendingFinalLocation(serviceId), signature };
+    ? { startLocation: getPendingStartLocation(serviceId), beforePhoto: getPendingBeforePhoto(serviceId) }
+    : {
+        finalLocation: getPendingFinalLocation(serviceId),
+        afterPhoto: getPendingAfterPhoto(serviceId),
+        signature,
+        report
+      };
 
   try {
     const service = await api(`/api/services/${serviceId}/${endpoint}`, { method: "POST", body });
-    if (action === "start") setPendingStartLocation(serviceId, null);
+    if (action === "start") {
+      setPendingStartLocation(serviceId, null);
+      setPendingBeforePhoto(serviceId, null);
+    }
     if (action === "finish") {
       setPendingStartLocation(serviceId, null);
       setPendingFinalLocation(serviceId, null);
+      setPendingAfterPhoto(serviceId, null);
+      clearReportPreference(serviceId);
     }
     upsertService(service);
     renderServices();
@@ -596,6 +793,29 @@ async function captureFinalLocation(serviceId) {
     toast("Localizacao", "Localizacao final capturada.");
   } catch (error) {
     toast("Localizacao", error.message || "Nao foi possivel pegar o GPS. Digite ou cole o link da localizacao.", "error");
+  }
+}
+
+async function handleServicePhotoInput(input, stage) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    toast("Foto", "Selecione uma imagem valida.", "error");
+    input.value = "";
+    return;
+  }
+
+  try {
+    toast("Foto", "Preparando foto para o protocolo...");
+    const photo = await fileToServicePhoto(file, stage);
+    if (stage === "before") setPendingBeforePhoto(input.dataset.id, photo);
+    else setPendingAfterPhoto(input.dataset.id, photo);
+    renderServices();
+    toast("Foto", stage === "before" ? "Foto antes salva." : "Foto depois salva.");
+  } catch (error) {
+    toast("Foto", error.message || "Nao foi possivel salvar a foto.", "error");
+  } finally {
+    input.value = "";
   }
 }
 
@@ -723,6 +943,16 @@ function bindEvents() {
       state.signaturePads.get(button.dataset.id)?.clear();
       return;
     }
+    if (button.dataset.action === "clear-before-photo") {
+      setPendingBeforePhoto(button.dataset.id, null);
+      renderServices();
+      return;
+    }
+    if (button.dataset.action === "clear-after-photo") {
+      setPendingAfterPhoto(button.dataset.id, null);
+      renderServices();
+      return;
+    }
     setServiceStatus(button.dataset.id, button.dataset.action);
   });
 
@@ -735,6 +965,27 @@ function bindEvents() {
     const finalInput = event.target.closest("input[data-final-location-input]");
     if (finalInput) {
       setPendingFinalLocation(finalInput.dataset.id, makeManualLocation(finalInput.value));
+    }
+    const reportEmail = event.target.closest("input[data-report-email-input]");
+    if (reportEmail) {
+      setReportPreference(reportEmail.dataset.id, { clientEmail: reportEmail.value });
+    }
+  });
+
+  document.body.addEventListener("change", (event) => {
+    const beforeInput = event.target.closest("input[data-before-photo-input]");
+    if (beforeInput) {
+      handleServicePhotoInput(beforeInput, "before");
+      return;
+    }
+    const afterInput = event.target.closest("input[data-after-photo-input]");
+    if (afterInput) {
+      handleServicePhotoInput(afterInput, "after");
+      return;
+    }
+    const reportSend = event.target.closest("input[data-report-send-input]");
+    if (reportSend) {
+      setReportPreference(reportSend.dataset.id, { sendToClient: reportSend.checked });
     }
   });
 }
