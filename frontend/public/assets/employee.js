@@ -68,6 +68,23 @@ function formatQuantity(value) {
   return Number.isInteger(number) ? String(number) : number.toLocaleString("pt-BR");
 }
 
+function servicePrice(service) {
+  const value = Number(service?.price || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function isServicePriced(service) {
+  return service?.priceStatus === "PRICED" && servicePrice(service) > 0;
+}
+
+function formatCurrency(value) {
+  const number = Number(value || 0);
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  }).format(Number.isFinite(number) ? number : 0);
+}
+
 function loadPendingStartLocations() {
   try {
     return JSON.parse(localStorage.getItem("egPendingStartLocations") || "{}");
@@ -635,6 +652,7 @@ function serviceCard(service) {
           <div class="meta">
             <span>${formatDateTime(service)}</span>
             <span>${escapeHTML(service.location)}</span>
+            <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
             <span>${escapeHTML(statusLabels[service.status] || service.status)}</span>
           </div>
         </div>
@@ -658,6 +676,10 @@ function serviceCard(service) {
         <div>
           <strong>Tipo de serviço</strong>
           <span>${escapeHTML(service.title)}</span>
+        </div>
+        <div>
+          <strong>Valor do servico</strong>
+          <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
         </div>
       </div>
       ${teamBlock(service)}

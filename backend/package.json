@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
-    "check": "node --check server/config.js && node --check server/server.js && node --check server/store.js",
+    "check": "node --check server/config.js && node --check server/server.js && node --check server/store.js && node --check server/reports.js",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:reload": "pm2 reload eg-services"
   },
@@ -15,6 +15,7 @@
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
     "morgan": "^1.10.0",
+    "pdfkit": "^0.19.1",
     "pg": "^8.13.1",
     "socket.io": "^4.7.5"
   }

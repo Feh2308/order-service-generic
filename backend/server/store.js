@@ -156,6 +156,13 @@ function normalizeLoadedData(loaded) {
   loaded.services.forEach((service) => {
     if (!("clientId" in service)) service.clientId = null;
     if (!("teamId" in service)) service.teamId = null;
+    service.price = normalizeServicePrice(service.price ?? service.serviceValue ?? service.value);
+    if (!["PENDING", "PRICED"].includes(service.priceStatus)) {
+      service.priceStatus = service.status === "done" && service.price > 0 ? "PRICED" : "PENDING";
+    }
+    if (!("financeNotes" in service)) service.financeNotes = "";
+    if (!("pricedAt" in service)) service.pricedAt = service.priceStatus === "PRICED" ? service.updatedAt || service.finishedAt || null : null;
+    if (!("pricedBy" in service)) service.pricedBy = null;
     if (!Array.isArray(service.materials)) service.materials = [];
     if (!("startLocation" in service)) service.startLocation = null;
     if (!("finalLocation" in service)) service.finalLocation = null;
@@ -380,6 +387,20 @@ function dashboard() {
 
 function normalizeText(value) {
   return String(value || "").trim();
+}
+
+function normalizeServicePrice(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : 0;
+  }
+
+  let text = normalizeText(value).replace(/[^\d,.-]/g, "");
+  if (!text) return 0;
+  if (text.includes(",") && text.includes(".")) text = text.replaceAll(".", "").replace(",", ".");
+  else if (text.includes(",")) text = text.replace(",", ".");
+
+  const amount = Number(text);
+  return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : 0;
 }
 
 function normalizeCode(value) {
@@ -711,6 +732,11 @@ async function createService(payload, adminId) {
     location: normalizeText(payload.location),
     address: normalizeText(payload.address),
     notes: normalizeText(payload.notes),
+    price: 0,
+    priceStatus: "PENDING",
+    financeNotes: "",
+    pricedAt: null,
+    pricedBy: null,
     materials,
     employeeIds,
     status: "scheduled",
@@ -901,6 +927,13 @@ async function finishService(serviceId, employeeId, payload = {}) {
   service.servicePhotos = service.servicePhotos || { before: null, after: null };
   service.servicePhotos.after = normalizeServicePhoto(payload.afterPhoto, "after", employeeId);
   service.reportPreference = normalizeReportPreference(payload.report, service, employeeId);
+  if (service.priceStatus !== "PRICED") {
+    service.price = 0;
+    service.priceStatus = "PENDING";
+    service.financeNotes = "";
+    service.pricedAt = null;
+    service.pricedBy = null;
+  }
   service.updatedAt = now();
   await save(db);
 
@@ -908,6 +941,30 @@ async function finishService(serviceId, employeeId, payload = {}) {
   await addEvent("service.finished", `${employee?.name || "FuncionÃ¡rio"} finalizou ${service.code}.`, {
     serviceId: service.id,
     employeeId
+  });
+  return publicService(service);
+}
+
+async function priceService(serviceId, adminId, payload = {}) {
+  const service = db.services.find((item) => item.id === serviceId);
+  if (!service) return null;
+  if (service.status !== "done") return { invalidStatus: true, service: publicService(service) };
+
+  const price = normalizeServicePrice(payload.price);
+  if (price <= 0) return { invalidPrice: true, service: publicService(service) };
+
+  service.price = price;
+  service.priceStatus = "PRICED";
+  service.financeNotes = normalizeText(payload.financeNotes);
+  service.pricedAt = now();
+  service.pricedBy = adminId;
+  service.updatedAt = now();
+  await save(db);
+
+  await addEvent("service.priced", `Preco do servico ${service.code} definido.`, {
+    serviceId: service.id,
+    adminId,
+    price
   });
   return publicService(service);
 }
@@ -949,6 +1006,7 @@ module.exports = {
   cancelService,
   startService,
   finishService,
+  priceService,
   get db() {
     if (!db) throw new Error("Store ainda nao inicializado.");
     return db;

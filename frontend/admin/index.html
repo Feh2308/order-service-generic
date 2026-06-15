@@ -150,6 +150,45 @@
               <div id="clientList" class="panel-body list"></div>
             </section>
           </div>
+
+          <section class="panel client-history-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Historico financeiro por cliente</h2>
+                <p>Consulte servicos por cliente, periodo e status com soma automatica dos valores.</p>
+              </div>
+            </div>
+            <div class="panel-body filter-grid">
+              <label class="field">
+                <span>Cliente</span>
+                <select id="historyClientFilter" class="input">
+                  <option value="">Todos os clientes</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>De</span>
+                <input id="historyDateFromFilter" class="input" type="date">
+              </label>
+              <label class="field">
+                <span>Ate</span>
+                <input id="historyDateToFilter" class="input" type="date">
+              </label>
+              <label class="field">
+                <span>Status</span>
+                <select id="historyStatusFilter" class="input">
+                  <option value="all">Todos</option>
+                  <option value="scheduled">Agendados</option>
+                  <option value="in_progress">Iniciados</option>
+                  <option value="done">Finalizados</option>
+                  <option value="cancelled">Cancelados</option>
+                </select>
+              </label>
+              <button id="clearHistoryFiltersButton" class="ghost-button filter-clear-button" type="button"><i data-lucide="filter-x"></i>Limpar filtros</button>
+              <button id="clientReportButton" class="primary-button filter-clear-button" type="button"><i data-lucide="file-text"></i>Gerar relatorio do cliente</button>
+            </div>
+            <div id="clientHistorySummary" class="panel-body history-summary"></div>
+            <div id="clientHistoryList" class="panel-body list"></div>
+          </section>
         </section>
 
         <section id="materialsTab" class="tab-view hidden">
@@ -355,6 +394,16 @@
               <div id="serviceList" class="panel-body list"></div>
             </section>
           </div>
+
+          <section class="panel pending-pricing-panel">
+            <div class="panel-header">
+              <div>
+                <h2>ServiÃ§os aguardando preÃ§o</h2>
+                <p>ServiÃ§os finalizados pelo funcionÃ¡rio que precisam de valor definido pelo admin.</p>
+              </div>
+            </div>
+            <div id="pendingPricingList" class="panel-body list"></div>
+          </section>
         </section>
 
         <section id="employeesTab" class="tab-view hidden">
@@ -453,6 +502,50 @@
         </section>
       </section>
     </main>
+
+    <div id="pdfOptionsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pdfOptionsTitle">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <h2 id="pdfOptionsTitle">Gerar PDF</h2>
+            <p id="pdfOptionsSubtitle">Escolha as informacoes que vao aparecer no relatorio.</p>
+          </div>
+          <button id="closePdfOptionsButton" class="ghost-button icon-button" type="button" aria-label="Fechar"><i data-lucide="x"></i></button>
+        </div>
+        <div id="pdfOptionsFields" class="modal-body checkbox-list"></div>
+        <div class="modal-actions">
+          <button id="cancelPdfOptionsButton" class="ghost-button" type="button"><i data-lucide="x-circle"></i>Cancelar</button>
+          <button id="generatePdfButton" class="primary-button" type="button"><i data-lucide="file-down"></i>Gerar PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="priceModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="priceModalTitle">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <h2 id="priceModalTitle">Adicionar preÃ§o</h2>
+            <p id="priceModalSubtitle">Defina o valor final do serviÃ§o.</p>
+          </div>
+          <button id="closePriceModalButton" class="ghost-button icon-button" type="button" aria-label="Fechar"><i data-lucide="x"></i></button>
+        </div>
+        <form id="priceForm" class="modal-body form-grid">
+          <input type="hidden" name="serviceId">
+          <label class="field full">
+            <span>Valor do serviÃ§o</span>
+            <input class="input" name="price" inputmode="decimal" placeholder="R$ 0,00" required>
+          </label>
+          <label class="field full">
+            <span>ObservaÃ§Ã£o financeira</span>
+            <textarea class="textarea" name="financeNotes" placeholder="Desconto, forma de pagamento, adicional, combinado com cliente..."></textarea>
+          </label>
+          <div class="field full modal-actions-inline">
+            <button id="cancelPriceButton" class="ghost-button" type="button"><i data-lucide="x-circle"></i>Cancelar</button>
+            <button class="primary-button" type="submit"><i data-lucide="save"></i>Salvar preÃ§o</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <div id="toastZone" class="toast-zone" aria-live="polite"></div>
     <script src="/vendor/socket.io/socket.io.min.js"></script>

@@ -5,6 +5,7 @@ const morgan = require("morgan");
 const { Server } = require("socket.io");
 const config = require("./config");
 const store = require("./store");
+const reports = require("./reports");
 
 const tokens = new Map();
 
@@ -39,6 +40,7 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
@@ -572,9 +574,49 @@ app.post("/api/services/:id/finish", auth("employee"), asyncRoute(async (req, re
   res.json(result);
 }));
 
+app.patch("/api/services/:id/price", auth("admin"), asyncRoute(async (req, res) => {
+  const result = await store.priceService(req.params.id, req.user.id, req.body || {});
+  if (!result) return res.status(404).json({ error: "Servico nao encontrado." });
+  if (result.invalidStatus) return res.status(409).json({ error: "Servico precisa estar finalizado para receber preco.", service: result.service });
+  if (result.invalidPrice) return res.status(400).json({ error: "Informe um valor maior que zero.", service: result.service });
+
+  broadcastService("service:updated", result, `Preco do servico ${result.code} definido.`);
+  emitDashboard();
+  res.json(result);
+}));
+
+app.post("/api/reports/client-pdf", auth("admin"), asyncRoute(async (req, res) => {
+  const clientId = String(req.body?.clientId || "").trim();
+  if (!clientId) return res.status(400).json({ error: "Selecione um cliente para gerar o relatorio." });
+
+  const result = await reports.createClientReportPdf({
+    db: store.db,
+    clientId,
+    filters: req.body?.filters || {},
+    options: req.body?.options || {}
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${result.fileName}"`);
+  res.send(result.buffer);
+}));
+
+app.post("/api/reports/service-pdf", auth("admin"), asyncRoute(async (req, res) => {
+  const serviceId = String(req.body?.serviceId || "").trim();
+  if (!serviceId) return res.status(400).json({ error: "Selecione um servico para gerar o PDF." });
+
+  const result = await reports.createServiceReportPdf({
+    db: store.db,
+    serviceId,
+    options: req.body?.options || {}
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${result.fileName}"`);
+  res.send(result.buffer);
+}));
+
 app.use((error, _req, res, _next) => {
   console.error(error);
-  res.status(500).json({ error: "Erro interno do servidor." });
+  res.status(error.statusCode || 500).json({ error: error.message || "Erro interno do servidor." });
 });
 
 io.use((socket, next) => {

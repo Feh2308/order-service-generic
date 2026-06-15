@@ -362,6 +362,38 @@ a {
   white-space: nowrap;
 }
 
+.client-history-panel {
+  margin-top: 16px;
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.history-stat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+
+.history-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.history-stat strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
 .field {
   display: grid;
   gap: 7px;
@@ -547,6 +579,73 @@ a {
 
 .danger-button:hover {
   background: #fff1ef;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(23, 33, 31, 0.42);
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-card {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 20px 50px rgba(22, 39, 34, 0.22);
+}
+
+.modal-header,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-header h2,
+.modal-header p {
+  margin: 0;
+}
+
+.modal-header p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.modal-body {
+  padding: 16px;
+}
+
+.modal-actions {
+  border-top: 1px solid var(--line);
+}
+
+.modal-actions-inline {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.icon-button {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
 }
 
 .list {
@@ -1324,6 +1423,7 @@ a {
   .status-overview,
   .status-board,
   .employee-summary,
+  .history-summary,
   .form-grid,
   .material-add-row,
   .work-order-grid,

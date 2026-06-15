@@ -13,7 +13,9 @@ const state = {
   editingClientId: null,
   editingMaterialId: null,
   editingTeamId: null,
-  activeTab: "dashboard"
+  pricingServiceId: null,
+  activeTab: "dashboard",
+  pdfRequest: null
 };
 
 const statusLabels = {
@@ -42,6 +44,47 @@ const pageText = {
 pageText.tracking = ["Acompanhamento", "Servicos separados por agendados, iniciados, cancelados e finalizados."];
 pageText.settings = ["Configurações", "Atualize o acesso do administrador e a conexão."];
 
+const pdfFieldsByType = {
+  service: [
+    ["clientName", "Nome do cliente", true],
+    ["phone", "Telefone", true],
+    ["serviceName", "Nome do servico", true],
+    ["description", "Descricao do servico", true],
+    ["price", "Valor do servico", true],
+    ["createdAt", "Data de abertura", true],
+    ["finishedAt", "Data de finalizacao", true],
+    ["status", "Status", true],
+    ["priceStatus", "Status de precificacao", true],
+    ["notes", "Observacoes", true],
+    ["financeNotes", "Observacoes financeiras", true],
+    ["responsibleEmployee", "Funcionario responsavel", true],
+    ["photos", "Fotos antes/depois", true],
+    ["signature", "Assinatura, se existir", true],
+    ["clientHistory", "Historico completo de servicos do cliente", false],
+    ["pricedServices", "Mostrar servicos com preco", true],
+    ["unpricedServices", "Mostrar servicos sem preco", true],
+    ["totalValue", "Soma total dos valores", false]
+  ],
+  client: [
+    ["clientName", "Nome do cliente", true],
+    ["phone", "Telefone", true],
+    ["clientNotes", "Observacoes gerais", true],
+    ["period", "Periodo selecionado", true],
+    ["clientHistory", "Historico completo de servicos do cliente", true],
+    ["serviceName", "Nome do servico", true],
+    ["createdAt", "Data", true],
+    ["status", "Status", true],
+    ["priceStatus", "Status de precificacao", true],
+    ["price", "Valor do servico", true],
+    ["financeNotes", "Observacoes financeiras", false],
+    ["responsibleEmployee", "Funcionario responsavel", true],
+    ["notes", "Observacoes", false],
+    ["pricedServices", "Mostrar servicos com preco", true],
+    ["unpricedServices", "Mostrar servicos sem preco", true],
+    ["totalValue", "Soma total dos valores", true]
+  ]
+};
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -67,6 +110,36 @@ function formatQuantity(value) {
   return Number.isInteger(number) ? String(number) : number.toLocaleString("pt-BR");
 }
 
+function servicePrice(service) {
+  const value = Number(service?.price || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function isServicePriced(service) {
+  return service?.priceStatus === "PRICED" && servicePrice(service) > 0;
+}
+
+function priceStatusLabel(service) {
+  return isServicePriced(service) ? "Finalizada com preco" : "Finalizada aguardando preco";
+}
+
+function formatCurrency(value) {
+  const number = Number(value || 0);
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  }).format(Number.isFinite(number) ? number : 0);
+}
+
+function parseCurrencyInput(value) {
+  let text = String(value || "").replace(/[^\d,.-]/g, "");
+  if (!text) return 0;
+  if (text.includes(",") && text.includes(".")) text = text.replaceAll(".", "").replace(",", ".");
+  else if (text.includes(",")) text = text.replace(",", ".");
+  const number = Number(text);
+  return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
+}
+
 function formatDateTime(service) {
   if (!service.date) return "Sem data";
   const value = new Date(`${service.date}T${service.time || "00:00"}:00`);
@@ -83,6 +156,37 @@ function shortDate(value) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function formatPhoneForWhatsApp(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("55")) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
+function serviceFinishedDate(service) {
+  return service.finishedAt ? shortDate(service.finishedAt) : shortDate(service.updatedAt || service.date);
+}
+
+function buildWhatsAppMessage(service) {
+  const customerName = service.client?.name || service.customer || "Cliente";
+  const lines = [
+    `Ola, ${customerName}. Segue o resumo da Ordem de Servico ${service.code}.`,
+    "",
+    `Cliente: ${customerName}`,
+    `Servico: ${service.title || ""}`,
+    `Status: ${statusLabels[service.status] || service.status}`,
+    `Valor: ${formatCurrency(servicePrice(service))}`,
+    `Finalizado em: ${serviceFinishedDate(service) || "Nao informado"}`
+  ];
+
+  if (service.notes) {
+    lines.push("", `Observacoes: ${service.notes}`);
+  }
+
+  return lines.join("\n");
 }
 
 function formatLocation(location) {
@@ -144,6 +248,45 @@ async function api(path, options = {}) {
   return payload;
 }
 
+async function apiBlob(path, options = {}) {
+  if (window.EGRuntime?.requiresServerUrl()) {
+    throw new Error("Informe a URL do servidor central antes de entrar.");
+  }
+  const headers = { ...(options.headers || {}) };
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+
+  let body = options.body;
+  if (body && !(body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(body);
+  }
+
+  const url = window.EGRuntime?.apiUrl(path) || path;
+  const response = await fetch(url, { ...options, headers, body });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Erro ao gerar PDF.");
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return {
+    blob,
+    fileName: match?.[1] || "relatorio.pdf"
+  };
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function showLogin() {
   localStorage.removeItem("egAdminToken");
   state.token = null;
@@ -189,6 +332,7 @@ function connectSocket() {
   state.socket.on("service:created", ({ service, message }) => {
     upsertService(service);
     renderServices();
+    renderClientHistory();
     toast("Serviço enviado", message || `${service.code} criado.`);
     browserNotify("EG Automações Services", message || `${service.code} criado.`);
   });
@@ -196,6 +340,7 @@ function connectSocket() {
   state.socket.on("service:updated", ({ service, message }) => {
     upsertService(service);
     renderServices();
+    renderClientHistory();
     toast("Serviço atualizado", message || `${service.code} atualizado.`);
     browserNotify("EG Automações Services", message || `${service.code} atualizado.`);
   });
@@ -251,7 +396,9 @@ async function loadClients() {
   state.clients = await api("/api/clients");
   renderClientSelect();
   renderClientFilter();
+  renderHistoryClientFilter();
   renderClients();
+  renderClientHistory();
 }
 
 async function loadMaterials() {
@@ -272,6 +419,7 @@ async function loadTeams() {
 async function loadServices() {
   state.services = await api("/api/services");
   renderServices();
+  renderClientHistory();
 }
 
 async function loadAll() {
@@ -342,6 +490,19 @@ function renderClientSelect() {
 
 function renderClientFilter() {
   const select = $("#clientFilter");
+  if (!select) return;
+  const selected = select.value;
+  select.innerHTML = `
+    <option value="">Todos os clientes</option>
+    ${state.clients
+      .map((client) => `<option value="${escapeHTML(client.id)}">${escapeHTML(client.name)}</option>`)
+      .join("")}
+  `;
+  select.value = state.clients.some((client) => client.id === selected) ? selected : "";
+}
+
+function renderHistoryClientFilter() {
+  const select = $("#historyClientFilter");
   if (!select) return;
   const selected = select.value;
   select.innerHTML = `
@@ -647,6 +808,7 @@ function buildReportHtml(service) {
       <div class="box"><strong>Cliente/empresa</strong>${escapeHTML(customerName)}</div>
       <div class="box"><strong>E-mail do cliente</strong>${escapeHTML(clientEmail || "Nao informado")}</div>
       <div class="box"><strong>Data e horario</strong>${escapeHTML(formatDateTime(service))}</div>
+      <div class="box"><strong>Valor do servico</strong>${escapeHTML(formatCurrency(servicePrice(service)))}</div>
       <div class="box"><strong>Local</strong>${escapeHTML(service.location || "")}<br><span class="muted">${escapeHTML(service.address || "")}</span></div>
       <div class="box"><strong>Responsaveis</strong>${escapeHTML(teamName ? `${teamName} - ${employeeNames}` : employeeNames)}</div>
       <div class="box"><strong>Envio ao cliente</strong>${service.reportPreference?.sendToClient ? "Solicitado no encerramento" : "Nao solicitado no encerramento"}</div>
@@ -696,16 +858,25 @@ function openServiceReport(serviceId) {
   reportWindow.document.close();
 }
 
-function sendServiceReport(serviceId) {
+async function sendServiceReport(serviceId) {
   const service = state.services.find((item) => item.id === serviceId);
   if (!service) return;
+  if (!isServicePriced(service)) {
+    toast("Relatorio", "Defina o preco antes de enviar o relatorio ao cliente.", "error");
+    return;
+  }
   const email = service.reportPreference?.clientEmail || service.client?.email || "";
   if (!email) {
     toast("Relatorio", "Cadastre o e-mail do cliente para preparar o envio.", "error");
     return;
   }
 
-  openServiceReport(serviceId);
+  try {
+    await downloadServiceReportPdf(serviceId, defaultServicePdfOptions());
+  } catch (error) {
+    toast("PDF", error.message, "error");
+    return;
+  }
   const customerName = service.client?.name || service.customer || "cliente";
   const subject = `Relatorio ${service.code} - ${customerName}`;
   const body = [
@@ -714,19 +885,358 @@ function sendServiceReport(serviceId) {
     `Cliente: ${customerName}`,
     `Servico: ${service.title || ""}`,
     `Data: ${formatDateTime(service)}`,
+    `Valor: ${formatCurrency(servicePrice(service))}`,
     `Local: ${service.location || ""}`,
     "",
-    "O relatorio completo com fotos, materiais, assinatura e localizacoes foi aberto no sistema para salvar em PDF e anexar a este e-mail."
+    "O PDF foi baixado pelo sistema para ser anexado a este e-mail."
   ].join("\n");
   window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  toast("Relatorio", "Relatorio aberto para salvar em PDF e e-mail preparado.");
+  toast("Relatorio", "PDF baixado e e-mail preparado para anexar.");
+}
+
+function sendServiceWhatsApp(serviceId) {
+  const service = state.services.find((item) => item.id === serviceId);
+  if (!service) return;
+  if (!isServicePriced(service)) {
+    toast("WhatsApp", "Defina o preco antes de enviar a OS ao cliente.", "error");
+    return;
+  }
+  const phone = formatPhoneForWhatsApp(service.client?.phone);
+  if (!phone) {
+    toast("WhatsApp", "Cadastre o telefone do cliente para abrir o WhatsApp.", "error");
+    return;
+  }
+
+  const message = buildWhatsAppMessage(service);
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  window.open(url, "_blank", "noopener");
+  toast("WhatsApp", "WhatsApp aberto com a mensagem da OS preenchida.");
+}
+
+function selectedPdfOptions() {
+  return Object.fromEntries(
+    Array.from(document.querySelectorAll("#pdfOptionsFields input[type='checkbox']")).map((input) => [
+      input.value,
+      input.checked
+    ])
+  );
+}
+
+function printShell(title, subtitle, content) {
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHTML(title)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px; font-family: Arial, sans-serif; color: #17211f; background: #f6f8f7; }
+    main { max-width: 980px; margin: 0 auto; background: #fff; border: 1px solid #d9e3df; border-radius: 8px; padding: 28px; }
+    .actions { position: sticky; top: 0; display: flex; justify-content: flex-end; gap: 10px; margin: -28px -28px 22px; padding: 12px; background: #eef5f1; border-bottom: 1px solid #d9e3df; }
+    button { border: 0; border-radius: 8px; padding: 10px 14px; color: #fff; background: #1f7a4d; font-weight: 700; cursor: pointer; }
+    header { border-bottom: 2px solid #1f7a4d; padding-bottom: 18px; margin-bottom: 18px; }
+    h1 { margin: 0 0 6px; font-size: 26px; }
+    h2 { margin: 24px 0 10px; font-size: 16px; color: #1f7a4d; }
+    p { margin: 4px 0; line-height: 1.45; }
+    .muted { color: #5f6f69; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .box { border: 1px solid #d9e3df; border-radius: 8px; padding: 12px; background: #fbfdfc; min-height: 64px; }
+    .box strong { display: block; margin-bottom: 4px; font-size: 12px; color: #5f6f69; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #d9e3df; padding: 9px; text-align: left; vertical-align: top; }
+    th { background: #eef5f1; }
+    .signature img { max-width: 360px; max-height: 120px; object-fit: contain; border: 1px solid #d9e3df; border-radius: 8px; background: #fff; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      main { border: 0; padding: 0; }
+      .actions { display: none; }
+    }
+    @media (max-width: 720px) {
+      body { padding: 12px; }
+      main { padding: 18px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="actions"><button type="button" onclick="window.print()">Salvar / imprimir PDF</button></div>
+    <header>
+      <h1>${escapeHTML(title)}</h1>
+      <p class="muted">${escapeHTML(subtitle)}</p>
+      <p><strong>EG Automacoes Services</strong></p>
+    </header>
+    ${content}
+  </main>
+</body>
+</html>`;
+}
+
+function openPrintableHtml(html) {
+  const reportWindow = window.open("", "_blank");
+  if (!reportWindow) {
+    toast("PDF", "O navegador bloqueou a janela do PDF.", "error");
+    return;
+  }
+  reportWindow.document.open();
+  reportWindow.document.write(html);
+  reportWindow.document.close();
+}
+
+function pdfBox(options, key, label, value) {
+  if (!options[key]) return "";
+  return `<div class="box"><strong>${escapeHTML(label)}</strong>${escapeHTML(value || "Nao informado")}</div>`;
+}
+
+function pdfServicesTable(services, options) {
+  if (!services.length) return `<p class="muted">Nenhum servico encontrado.</p>`;
+  const columns = [
+    ["serviceName", "Servico", (service) => `${service.code} - ${service.title || ""}`],
+    ["createdAt", "Data", (service) => formatDateTime(service)],
+    ["status", "Status", (service) => statusLabels[service.status] || service.status],
+    ["priceStatus", "Precificacao", (service) => priceStatusLabel(service)],
+    ["responsibleEmployee", "Responsavel", (service) => serviceResponsibleNames(service)],
+    ["price", "Valor", (service) => (isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")],
+    ["financeNotes", "Obs. financeira", (service) => service.financeNotes || ""],
+    ["notes", "Observacoes", (service) => service.notes || ""]
+  ].filter(([key]) => options[key]);
+
+  if (!columns.length) {
+    columns.push(["serviceName", "Servico", (service) => `${service.code} - ${service.title || ""}`]);
+  }
+
+  return `
+    <table>
+      <thead><tr>${columns.map(([, label]) => `<th>${escapeHTML(label)}</th>`).join("")}</tr></thead>
+      <tbody>
+        ${services
+          .map(
+            (service) => `<tr>${columns.map(([, , value]) => `<td>${escapeHTML(value(service))}</td>`).join("")}</tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function filterServicesByPriceOptions(services, options) {
+  const showPriced = options.pricedServices !== false;
+  const showUnpriced = options.unpricedServices !== false;
+  return services.filter((service) => {
+    if (isServicePriced(service)) return showPriced;
+    return showUnpriced;
+  });
+}
+
+function periodLabel(filters) {
+  const from = filters.dateFrom || "inicio";
+  const to = filters.dateTo || "hoje";
+  return `${from} ate ${to}`;
+}
+
+function buildServicePdfHtml(service, options) {
+  const customerName = service.client?.name || service.customer || "Cliente nao informado";
+  const allClientServices = service.clientId
+    ? clientHistoryServices({ clientId: service.clientId, status: "all", dateFrom: "", dateTo: "" })
+    : [];
+  const clientServices = filterServicesByPriceOptions(allClientServices, options);
+  const totalValue = sumServiceValues(clientServices);
+  const content = `
+    <section class="grid">
+      ${pdfBox(options, "clientName", "Cliente", customerName)}
+      ${pdfBox(options, "phone", "Telefone", service.client?.phone || "")}
+      ${pdfBox(options, "serviceName", "Servico", `${service.code} - ${service.title || ""}`)}
+      ${pdfBox(options, "description", "Descricao", service.notes || "")}
+      ${pdfBox(options, "price", "Valor", isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}
+      ${pdfBox(options, "createdAt", "Data de abertura", shortDate(service.createdAt) || formatDateTime(service))}
+      ${pdfBox(options, "finishedAt", "Data de finalizacao", serviceFinishedDate(service))}
+      ${pdfBox(options, "status", "Status", statusLabels[service.status] || service.status)}
+      ${pdfBox(options, "priceStatus", "Status de precificacao", priceStatusLabel(service))}
+      ${pdfBox(options, "responsibleEmployee", "Funcionario responsavel", serviceResponsibleNames(service))}
+      ${pdfBox(options, "notes", "Observacoes", service.notes || "")}
+      ${pdfBox(options, "financeNotes", "Observacoes financeiras", service.financeNotes || "")}
+    </section>
+    ${
+      options.signature
+        ? `<h2>Assinatura</h2><section class="signature">${
+            service.clientSignature?.imageDataUrl
+              ? `<p>${escapeHTML(service.clientSignature.signerName || "Cliente")} - ${escapeHTML(shortDate(service.clientSignature.signedAt))}</p><img src="${escapeHTML(service.clientSignature.imageDataUrl)}" alt="Assinatura do cliente">`
+              : `<p class="muted">Sem assinatura registrada.</p>`
+          }</section>`
+        : ""
+    }
+    ${options.clientHistory ? `<h2>Historico do cliente</h2>${pdfServicesTable(clientServices, options)}` : ""}
+    ${options.totalValue ? `<h2>Total</h2><p><strong>${escapeHTML(formatCurrency(totalValue))}</strong> em ${clientServices.length} servico(s).</p>` : ""}
+  `;
+  return printShell(`Ordem de Servico ${service.code}`, customerName, content);
+}
+
+function buildClientPdfHtml(filters, options) {
+  const client = state.clients.find((item) => item.id === filters.clientId);
+  const services = filterServicesByPriceOptions(clientHistoryServices(filters), options);
+  const totalValue = sumServiceValues(services);
+  const content = `
+    <section class="grid">
+      ${pdfBox(options, "clientName", "Cliente", client?.name || "")}
+      ${pdfBox(options, "phone", "Telefone", client?.phone || "")}
+      ${pdfBox(options, "clientNotes", "Observacoes gerais", client?.notes || "")}
+      ${pdfBox(options, "period", "Periodo", periodLabel(filters))}
+    </section>
+    ${options.clientHistory ? `<h2>Servicos do cliente</h2>${pdfServicesTable(services, options)}` : ""}
+    ${options.totalValue ? `<h2>Total</h2><p><strong>${escapeHTML(formatCurrency(totalValue))}</strong> em ${services.length} servico(s).</p>` : ""}
+  `;
+  return printShell(`Relatorio do cliente ${client?.name || ""}`, periodLabel(filters), content);
+}
+
+async function downloadClientReportPdf(filters, options) {
+  const result = await apiBlob("/api/reports/client-pdf", {
+    method: "POST",
+    body: {
+      clientId: filters.clientId,
+      filters,
+      options
+    }
+  });
+  downloadBlob(result.blob, result.fileName);
+  return result.fileName;
+}
+
+async function downloadServiceReportPdf(serviceId, options) {
+  const result = await apiBlob("/api/reports/service-pdf", {
+    method: "POST",
+    body: {
+      serviceId,
+      options
+    }
+  });
+  downloadBlob(result.blob, result.fileName);
+  return result.fileName;
+}
+
+function openPdfOptions(type, serviceId = "") {
+  const fields = pdfFieldsByType[type] || [];
+  if (type === "client" && !clientHistoryFilters().clientId) {
+    toast("PDF", "Selecione um cliente no historico para gerar o relatorio.", "error");
+    return;
+  }
+  if (type === "service" && !state.services.some((service) => service.id === serviceId)) return;
+
+  state.pdfRequest = { type, serviceId };
+  $("#pdfOptionsTitle").textContent = type === "client" ? "Gerar relatorio do cliente" : "Gerar PDF da OS";
+  $("#pdfOptionsSubtitle").textContent = "Escolha as informacoes que vao aparecer no PDF.";
+  $("#pdfOptionsFields").innerHTML = fields
+    .map(
+      ([id, label, checked]) => `
+        <label class="checkbox-item">
+          <input type="checkbox" value="${escapeHTML(id)}" ${checked ? "checked" : ""}>
+          <span>${escapeHTML(label)}</span>
+        </label>
+      `
+    )
+    .join("");
+  $("#pdfOptionsModal").classList.remove("hidden");
+  refreshIcons();
+}
+
+function closePdfOptions() {
+  state.pdfRequest = null;
+  $("#pdfOptionsModal").classList.add("hidden");
+}
+
+function openPriceModal(serviceId) {
+  const service = state.services.find((item) => item.id === serviceId);
+  if (!service) return;
+  state.pricingServiceId = serviceId;
+  const form = $("#priceForm");
+  form.reset();
+  form.elements.serviceId.value = serviceId;
+  form.elements.price.value = isServicePriced(service) ? formatCurrency(servicePrice(service)) : "";
+  form.elements.financeNotes.value = service.financeNotes || "";
+  $("#priceModalTitle").textContent = isServicePriced(service) ? "Alterar preco" : "Adicionar preco";
+  $("#priceModalSubtitle").textContent = `${service.code} - ${service.title || ""}`;
+  $("#priceModal").classList.remove("hidden");
+  refreshIcons();
+}
+
+function closePriceModal() {
+  state.pricingServiceId = null;
+  $("#priceModal").classList.add("hidden");
+}
+
+function defaultServicePdfOptions() {
+  return Object.fromEntries((pdfFieldsByType.service || []).map(([id, _label, checked]) => [id, Boolean(checked)]));
+}
+
+async function handlePriceSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const serviceId = form.elements.serviceId.value;
+  const payload = {
+    price: parseCurrencyInput(form.elements.price.value),
+    financeNotes: form.elements.financeNotes.value
+  };
+
+  try {
+    const service = await api(`/api/services/${serviceId}/price`, { method: "PATCH", body: payload });
+    upsertService(service);
+    renderServices();
+    renderClientHistory();
+    await loadDashboard();
+    closePriceModal();
+    toast("Preco", "Preco do servico salvo.");
+    try {
+      const fileName = await downloadServiceReportPdf(service.id, defaultServicePdfOptions());
+      toast("PDF", `PDF da OS baixado: ${fileName}.`);
+    } catch (downloadError) {
+      toast("PDF", downloadError.message, "error");
+    }
+  } catch (error) {
+    toast("Preco", error.message, "error");
+  }
+}
+
+async function generateSelectedPdf() {
+  if (!state.pdfRequest) return;
+  const options = selectedPdfOptions();
+  if (!Object.values(options).some(Boolean)) {
+    toast("PDF", "Selecione pelo menos uma informacao para o PDF.", "error");
+    return;
+  }
+
+  if (state.pdfRequest.type === "service") {
+    const service = state.services.find((item) => item.id === state.pdfRequest.serviceId);
+    if (service) {
+      try {
+        const fileName = await downloadServiceReportPdf(service.id, options);
+        toast("PDF", `PDF baixado: ${fileName}.`);
+      } catch (error) {
+        toast("PDF", error.message, "error");
+        return;
+      }
+    }
+  }
+
+  if (state.pdfRequest.type === "client") {
+    const filters = clientHistoryFilters();
+    try {
+      const fileName = await downloadClientReportPdf(filters, options);
+      toast("PDF", `PDF baixado: ${fileName}.`);
+    } catch (error) {
+      toast("PDF", error.message, "error");
+      return;
+    }
+  }
+
+  closePdfOptions();
 }
 
 function serviceCard(service) {
   const employeeNames = (service.employees || []).map((employee) => employee.name).join(", ");
   const customerName = service.client?.name || service.customer;
   const canAdminAct = !["done", "cancelled"].includes(service.status);
-  const canReport = service.status === "done";
+  const canReport = service.status === "done" && isServicePriced(service);
+  const needsPrice = service.status === "done" && !isServicePriced(service);
 
   return `
     <article class="service-card">
@@ -736,6 +1246,7 @@ function serviceCard(service) {
           <div class="meta">
             <span>${formatDateTime(service)}</span>
             <span>${escapeHTML(service.location)}</span>
+            <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
             <span>${escapeHTML(employeeNames || "Sem funcionário")}</span>
           </div>
         </div>
@@ -751,10 +1262,18 @@ function serviceCard(service) {
       ${photoBlock(service.servicePhotos)}
       ${signatureBlock(service.clientSignature)}
       ${
+        needsPrice
+          ? `<div class="row-actions">
+              <button class="primary-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Adicionar preÃ§o</button>
+            </div>`
+          : ""
+      }
+      ${
         canReport
           ? `<div class="row-actions">
-              <button class="ghost-button" type="button" data-action="open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>Salvar relatorio</button>
+              <button class="ghost-button" type="button" data-action="open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>Gerar PDF</button>
               <button class="status-button" type="button" data-action="send-report" data-id="${escapeHTML(service.id)}"><i data-lucide="mail"></i>Enviar ao cliente</button>
+              <button class="ghost-button" type="button" data-action="send-whatsapp" data-id="${escapeHTML(service.id)}"><i data-lucide="message-circle"></i>Enviar para cliente via WhatsApp</button>
             </div>`
           : ""
       }
@@ -797,6 +1316,7 @@ function serviceTrackingCard(service) {
         <span><i data-lucide="clock"></i>${escapeHTML(timestamp)}</span>
         <span><i data-lucide="map-pin"></i>${escapeHTML(service.location || "Sem local")}</span>
         <span><i data-lucide="users-round"></i>${escapeHTML(teamName || employeeNames || "Sem responsavel")}</span>
+        <span><i data-lucide="dollar-sign"></i>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
         <span><i data-lucide="package"></i>${materialCount} material(is)</span>
       </div>
     </article>
@@ -875,7 +1395,119 @@ function renderServices() {
   $("#serviceList").innerHTML = services.length
     ? services.map(serviceCard).join("")
     : `<div class="empty">Nenhum serviço encontrado.</div>`;
+  renderPendingPricing();
   renderTracking();
+  refreshIcons();
+}
+
+function clientHistoryFilters() {
+  return {
+    clientId: $("#historyClientFilter")?.value || "",
+    status: $("#historyStatusFilter")?.value || "all",
+    dateFrom: $("#historyDateFromFilter")?.value || "",
+    dateTo: $("#historyDateToFilter")?.value || ""
+  };
+}
+
+function clientHistoryServices(filters = clientHistoryFilters()) {
+  return state.services
+    .filter((service) => !filters.clientId || service.clientId === filters.clientId)
+    .filter((service) => filters.status === "all" || service.status === filters.status)
+    .filter((service) => !filters.dateFrom || service.date >= filters.dateFrom)
+    .filter((service) => !filters.dateTo || service.date <= filters.dateTo)
+    .slice()
+    .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+}
+
+function sumServiceValues(services) {
+  return services.reduce((total, service) => total + (isServicePriced(service) ? servicePrice(service) : 0), 0);
+}
+
+function serviceResponsibleNames(service) {
+  if (service.finishedBy) {
+    const employee = (service.employees || []).find((item) => item.id === service.finishedBy);
+    if (employee) return employee.name;
+  }
+  return (service.employees || []).map((employee) => employee.name).join(", ") || "Sem funcionario";
+}
+
+function pendingPricingServices() {
+  return state.services
+    .filter((service) => service.status === "done" && !isServicePriced(service))
+    .slice()
+    .sort((a, b) => String(b.finishedAt || b.updatedAt || "").localeCompare(String(a.finishedAt || a.updatedAt || "")));
+}
+
+function renderPendingPricing() {
+  const list = $("#pendingPricingList");
+  if (!list) return;
+  const services = pendingPricingServices();
+  list.innerHTML = services.length
+    ? services
+        .map((service) => {
+          const customerName = service.client?.name || service.customer || "Cliente nao informado";
+          return `
+            <div class="employee-row pending-price-row">
+              <div>
+                <strong>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</strong>
+                <span>${escapeHTML(customerName)} - finalizado em ${escapeHTML(serviceFinishedDate(service) || "data nao informada")}</span>
+                <span>${escapeHTML(serviceResponsibleNames(service))} - ${escapeHTML(priceStatusLabel(service))}</span>
+              </div>
+              <div class="row-actions">
+                <button class="primary-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Adicionar preÃ§o</button>
+              </div>
+            </div>
+          `;
+        })
+        .join("")
+    : `<div class="empty">Nenhum servico aguardando preco.</div>`;
+  refreshIcons();
+}
+
+function renderClientHistory() {
+  const summary = $("#clientHistorySummary");
+  const list = $("#clientHistoryList");
+  if (!summary || !list) return;
+
+  const filters = clientHistoryFilters();
+  const client = filters.clientId ? state.clients.find((item) => item.id === filters.clientId) : null;
+  const services = clientHistoryServices(filters);
+  const totalValue = sumServiceValues(services);
+
+  summary.innerHTML = `
+    <section class="history-stat">
+      <span>Cliente</span>
+      <strong>${escapeHTML(client?.name || "Todos os clientes")}</strong>
+    </section>
+    <section class="history-stat">
+      <span>Total de servicos</span>
+      <strong>${services.length}</strong>
+    </section>
+    <section class="history-stat">
+      <span>Soma dos valores</span>
+      <strong>${escapeHTML(formatCurrency(totalValue))}</strong>
+    </section>
+  `;
+
+  list.innerHTML = services.length
+    ? services
+        .map((service) => {
+          const customerName = service.client?.name || service.customer || "Cliente nao informado";
+          return `
+            <div class="employee-row history-row">
+              <div>
+                <strong>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</strong>
+                <span>${escapeHTML(customerName)} - ${escapeHTML(formatDateTime(service))}</span>
+                <span>${escapeHTML(statusLabels[service.status] || service.status)} - ${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
+              </div>
+              <div class="row-actions">
+                <button class="ghost-button" type="button" data-action="history-open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>PDF da OS</button>
+              </div>
+            </div>
+          `;
+        })
+        .join("")
+    : `<div class="empty">Nenhum servico encontrado para os filtros.</div>`;
   refreshIcons();
 }
 
@@ -1010,6 +1642,7 @@ function renderClients() {
                 ${client.address ? `<span>${escapeHTML(client.address)}</span>` : ""}
               </div>
               <div class="row-actions">
+                <button class="ghost-button" type="button" data-action="client-history" data-id="${escapeHTML(client.id)}"><i data-lucide="history"></i>Historico</button>
                 <button class="ghost-button" type="button" data-action="edit-client" data-id="${escapeHTML(client.id)}"><i data-lucide="pencil"></i>Editar</button>
                 <button class="${client.active ? "danger-button" : "primary-button"}" type="button" data-action="toggle-client" data-id="${escapeHTML(client.id)}" data-active="${client.active}">
                   <i data-lucide="${client.active ? "power-off" : "power"}"></i>${client.active ? "Desativar" : "Ativar"}
@@ -1248,6 +1881,7 @@ async function handleServiceSubmit(event) {
     const service = await api(path, { method, body: payload });
     upsertService(service);
     renderServices();
+    renderClientHistory();
     await loadDashboard();
     toast("Serviço", editingId ? "Serviço atualizado." : "Serviço enviado aos funcionários.");
     clearServiceForm();
@@ -1341,6 +1975,7 @@ async function cancelService(serviceId) {
     const updated = await api(`/api/services/${serviceId}/cancel`, { method: "POST" });
     upsertService(updated);
     renderServices();
+    renderClientHistory();
     await loadDashboard();
     toast("Serviço", `${updated.code} cancelado.`);
   } catch (error) {
@@ -1450,6 +2085,29 @@ function bindEvents() {
     $("#dateToFilter").value = "";
     renderServices();
   });
+  ["historyClientFilter", "historyStatusFilter", "historyDateFromFilter", "historyDateToFilter"].forEach((id) => {
+    $(`#${id}`).addEventListener("change", renderClientHistory);
+  });
+  $("#clearHistoryFiltersButton").addEventListener("click", () => {
+    $("#historyClientFilter").value = "";
+    $("#historyStatusFilter").value = "all";
+    $("#historyDateFromFilter").value = "";
+    $("#historyDateToFilter").value = "";
+    renderClientHistory();
+  });
+  $("#clientReportButton").addEventListener("click", () => openPdfOptions("client"));
+  $("#closePdfOptionsButton").addEventListener("click", closePdfOptions);
+  $("#cancelPdfOptionsButton").addEventListener("click", closePdfOptions);
+  $("#generatePdfButton").addEventListener("click", generateSelectedPdf);
+  $("#pdfOptionsModal").addEventListener("click", (event) => {
+    if (event.target.id === "pdfOptionsModal") closePdfOptions();
+  });
+  $("#priceForm").addEventListener("submit", handlePriceSubmit);
+  $("#closePriceModalButton").addEventListener("click", closePriceModal);
+  $("#cancelPriceButton").addEventListener("click", closePriceModal);
+  $("#priceModal").addEventListener("click", (event) => {
+    if (event.target.id === "priceModal") closePriceModal();
+  });
   $("#employeeForm").addEventListener("submit", handleEmployeeSubmit);
   $("#adminSettingsForm").addEventListener("submit", handleAdminSettingsSubmit);
   $("#clientSelect").addEventListener("change", (event) => {
@@ -1470,11 +2128,33 @@ function bindEvents() {
     if (button.dataset.action === "cancel-service") {
       cancelService(button.dataset.id);
     }
+    if (button.dataset.action === "add-price") {
+      openPriceModal(button.dataset.id);
+    }
     if (button.dataset.action === "open-report") {
-      openServiceReport(button.dataset.id);
+      openPdfOptions("service", button.dataset.id);
     }
     if (button.dataset.action === "send-report") {
       sendServiceReport(button.dataset.id);
+    }
+    if (button.dataset.action === "send-whatsapp") {
+      sendServiceWhatsApp(button.dataset.id);
+    }
+  });
+
+  $("#clientHistoryList").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    if (button.dataset.action === "history-open-report") {
+      openPdfOptions("service", button.dataset.id);
+    }
+  });
+
+  $("#pendingPricingList").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    if (button.dataset.action === "add-price") {
+      openPriceModal(button.dataset.id);
     }
   });
 
@@ -1491,6 +2171,11 @@ function bindEvents() {
     if (button.dataset.action === "edit-client") {
       const client = state.clients.find((item) => item.id === button.dataset.id);
       if (client) fillClientForm(client);
+    }
+    if (button.dataset.action === "client-history") {
+      $("#historyClientFilter").value = button.dataset.id;
+      renderClientHistory();
+      document.querySelector(".client-history-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     if (button.dataset.action === "toggle-client") {
       toggleClient(button.dataset.id, button.dataset.active !== "true");
