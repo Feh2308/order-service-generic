@@ -30,11 +30,11 @@ function isPriced(service) {
 }
 
 function priceLabel(service) {
-  return isPriced(service) ? formatMoney(service.price) : "Aguardando preco";
+  return isPriced(service) ? formatMoney(service.price) : "Aguardando preço";
 }
 
 function priceStatusLabel(service) {
-  return isPriced(service) ? "Finalizada com preco" : "Finalizada aguardando preco";
+  return isPriced(service) ? "PRECIFICADA" : "AGUARDANDO_PREÇO";
 }
 
 function employeeNames(db, service) {
@@ -45,7 +45,7 @@ function employeeNames(db, service) {
   return (service.employeeIds || [])
     .map((employeeId) => db.employees.find((employee) => employee.id === employeeId)?.name)
     .filter(Boolean)
-    .join(", ") || "Sem funcionario";
+    .join(", ") || "Sem funcionário";
 }
 
 function clientNameForService(db, service) {
@@ -82,7 +82,7 @@ function collectPdf(doc) {
 
 function writeLine(doc, label, value) {
   doc.font("Helvetica-Bold").text(`${label}: `, { continued: true });
-  doc.font("Helvetica").text(String(value || "Nao informado"));
+  doc.font("Helvetica").text(String(value || "Não informado"));
 }
 
 function ensureSpace(doc, needed = 80) {
@@ -92,14 +92,14 @@ function ensureSpace(doc, needed = 80) {
 function drawHeader(doc, title, subtitle) {
   doc.font("Helvetica-Bold").fontSize(18).fillColor("#17211f").text(title);
   doc.font("Helvetica").fontSize(10).fillColor("#5f6f69").text(subtitle);
-  doc.font("Helvetica").fontSize(10).text("EG Automacoes Services");
+  doc.font("Helvetica").fontSize(10).text("EG Automações Services");
   doc.moveDown();
   doc.fillColor("#17211f").fontSize(11);
 }
 
 function drawServicesTable(doc, db, services, options) {
   if (!services.length) {
-    doc.font("Helvetica").text("Nenhum servico encontrado.");
+    doc.font("Helvetica").text("Nenhum serviço encontrado.");
     return;
   }
 
@@ -111,14 +111,14 @@ function drawServicesTable(doc, db, services, options) {
     doc.x = boxX + 12;
     doc.y = boxY + 10;
 
-    if (options.serviceName !== false) writeLine(doc, "Servico", `${service.code} - ${service.title || ""}`);
+    if (options.serviceName !== false) writeLine(doc, "Serviço", `${service.code} - ${service.title || ""}`);
     if (options.createdAt !== false) writeLine(doc, "Data", serviceDate(service));
     if (options.status !== false) writeLine(doc, "Status", service.status || "");
-    if (options.priceStatus) writeLine(doc, "Precificacao", priceStatusLabel(service));
-    if (options.responsibleEmployee) writeLine(doc, "Responsavel", employeeNames(db, service));
+    if (options.priceStatus) writeLine(doc, "Precificação", priceStatusLabel(service));
+    if (options.responsibleEmployee) writeLine(doc, "Responsável", employeeNames(db, service));
     if (options.price !== false) writeLine(doc, "Valor", priceLabel(service));
     if (options.financeNotes && service.financeNotes) writeLine(doc, "Obs. financeira", service.financeNotes);
-    if (options.notes && service.notes) writeLine(doc, "Observacoes", service.notes);
+    if (options.notes && service.notes) writeLine(doc, "Observações", service.notes);
 
     doc.x = boxX;
     doc.y = boxY + 114;
@@ -140,7 +140,7 @@ function drawSignature(doc, service) {
     try {
       doc.image(Buffer.from(base64, "base64"), { fit: [260, 90] });
     } catch (_error) {
-      doc.font("Helvetica").text("Assinatura registrada, mas nao foi possivel inserir a imagem no PDF.");
+      doc.font("Helvetica").text("Assinatura registrada, mas não foi possível inserir a imagem no PDF.");
     }
   }
 }
@@ -155,13 +155,13 @@ function drawServicePhoto(doc, title, photo) {
   doc.font("Helvetica-Bold").fontSize(12).text(title);
   doc.moveDown(0.3);
   if (!photo?.imageDataUrl) {
-    doc.font("Helvetica").fontSize(10).text("Foto nao registrada.");
+    doc.font("Helvetica").fontSize(10).text("Foto não registrada.");
     return;
   }
 
   const image = imageBufferFromDataUrl(photo.imageDataUrl);
   if (!image) {
-    doc.font("Helvetica").fontSize(10).text("Foto registrada, mas nao foi possivel inserir a imagem.");
+    doc.font("Helvetica").fontSize(10).text("Foto registrada, mas não foi possível inserir a imagem.");
     return;
   }
 
@@ -169,7 +169,7 @@ function drawServicePhoto(doc, title, photo) {
     doc.image(image, { fit: [230, 170] });
     if (photo.capturedAt) doc.font("Helvetica").fontSize(9).text(`Capturada em ${photo.capturedAt}`);
   } catch (_error) {
-    doc.font("Helvetica").fontSize(10).text("Foto registrada, mas nao foi possivel inserir a imagem no PDF.");
+    doc.font("Helvetica").fontSize(10).text("Foto registrada, mas não foi possível inserir a imagem no PDF.");
   }
   doc.moveDown();
 }
@@ -185,7 +185,7 @@ function drawServicePhotos(doc, service) {
 async function createClientReportPdf({ db, clientId, filters = {}, options = {} }) {
   const client = db.clients.find((item) => item.id === clientId);
   if (!client) {
-    const error = new Error("Cliente nao encontrado.");
+    const error = new Error("Cliente não encontrado.");
     error.statusCode = 404;
     throw error;
   }
@@ -197,16 +197,16 @@ async function createClientReportPdf({ db, clientId, filters = {}, options = {} 
 
   const doc = new PDFDocument({ margin: 44, size: "A4" });
   const done = collectPdf(doc);
-  drawHeader(doc, "Relatorio do cliente", client.name);
+  drawHeader(doc, "Relatório do cliente", client.name);
 
   if (options.clientName !== false) writeLine(doc, "Cliente", client.name);
   if (options.phone !== false) writeLine(doc, "Telefone", client.phone || "");
-  if (options.clientNotes) writeLine(doc, "Observacoes gerais", client.notes || "");
-  if (options.period !== false) writeLine(doc, "Periodo", `${filters.dateFrom || "inicio"} ate ${filters.dateTo || "hoje"}`);
+  if (options.clientNotes) writeLine(doc, "Observações gerais", client.notes || "");
+  if (options.period !== false) writeLine(doc, "Período", `${filters.dateFrom || "início"} até ${filters.dateTo || "hoje"}`);
   doc.moveDown();
 
   if (options.clientHistory !== false) {
-    doc.font("Helvetica-Bold").fontSize(13).text("Servicos");
+    doc.font("Helvetica-Bold").fontSize(13).text("Serviços");
     doc.moveDown(0.4);
     doc.fontSize(10);
     drawServicesTable(doc, db, services, options);
@@ -216,7 +216,7 @@ async function createClientReportPdf({ db, clientId, filters = {}, options = {} 
     ensureSpace(doc, 60);
     doc.moveDown();
     doc.font("Helvetica-Bold").fontSize(13).text("Total financeiro");
-    doc.font("Helvetica").fontSize(11).text(`${formatMoney(total)} em ${services.filter(isPriced).length} servico(s) com preco.`);
+    doc.font("Helvetica").fontSize(11).text(`${formatMoney(total)} em ${services.filter(isPriced).length} serviço(s) com preço.`);
   }
 
   doc.end();
@@ -226,12 +226,12 @@ async function createClientReportPdf({ db, clientId, filters = {}, options = {} 
 async function createServiceReportPdf({ db, serviceId, options = {} }) {
   const service = db.services.find((item) => item.id === serviceId);
   if (!service) {
-    const error = new Error("Servico nao encontrado.");
+    const error = new Error("Serviço não encontrado.");
     error.statusCode = 404;
     throw error;
   }
   if (!isPriced(service)) {
-    const error = new Error("Defina o preco antes de gerar o PDF.");
+    const error = new Error("Defina o preço antes de gerar o PDF.");
     error.statusCode = 409;
     throw error;
   }
@@ -246,19 +246,19 @@ async function createServiceReportPdf({ db, serviceId, options = {} }) {
 
   const doc = new PDFDocument({ margin: 44, size: "A4" });
   const done = collectPdf(doc);
-  drawHeader(doc, `Ordem de Servico ${service.code}`, customerName);
+  drawHeader(doc, `Ordem de Serviço ${service.code}`, customerName);
 
   if (options.clientName !== false) writeLine(doc, "Cliente", customerName);
   if (options.phone !== false) writeLine(doc, "Telefone", client?.phone || "");
-  if (options.serviceName !== false) writeLine(doc, "Servico", service.title || "");
-  if (options.description) writeLine(doc, "Descricao", service.notes || "");
+  if (options.serviceName !== false) writeLine(doc, "Serviço", service.title || "");
+  if (options.description) writeLine(doc, "Descrição", service.notes || "");
   if (options.price !== false) writeLine(doc, "Valor", priceLabel(service));
   if (options.createdAt !== false) writeLine(doc, "Data de abertura", service.createdAt || serviceDate(service));
-  if (options.finishedAt !== false) writeLine(doc, "Data de finalizacao", service.finishedAt || "");
+  if (options.finishedAt !== false) writeLine(doc, "Data de finalização", service.finishedAt || "");
   if (options.status !== false) writeLine(doc, "Status", service.status || "");
-  if (options.priceStatus) writeLine(doc, "Precificacao", priceStatusLabel(service));
-  if (options.responsibleEmployee) writeLine(doc, "Responsavel", employeeNames(db, service));
-  if (options.notes) writeLine(doc, "Observacoes", service.notes || "");
+  if (options.priceStatus) writeLine(doc, "Precificação", priceStatusLabel(service));
+  if (options.responsibleEmployee) writeLine(doc, "Responsável", employeeNames(db, service));
+  if (options.notes) writeLine(doc, "Observações", service.notes || "");
   if (options.financeNotes) writeLine(doc, "Obs. financeira", service.financeNotes || "");
   doc.moveDown();
 
@@ -267,7 +267,7 @@ async function createServiceReportPdf({ db, serviceId, options = {} }) {
   if (options.clientHistory && allClientServices.length) {
     ensureSpace(doc, 100);
     doc.moveDown();
-    doc.font("Helvetica-Bold").fontSize(13).text("Historico do cliente");
+    doc.font("Helvetica-Bold").fontSize(13).text("Histórico do cliente");
     doc.moveDown(0.4);
     drawServicesTable(doc, db, allClientServices, options);
   }
@@ -275,7 +275,7 @@ async function createServiceReportPdf({ db, serviceId, options = {} }) {
     ensureSpace(doc, 60);
     doc.moveDown();
     doc.font("Helvetica-Bold").fontSize(13).text("Total financeiro do cliente");
-    doc.font("Helvetica").fontSize(11).text(`${formatMoney(total)} em ${allClientServices.filter(isPriced).length} servico(s) com preco.`);
+    doc.font("Helvetica").fontSize(11).text(`${formatMoney(total)} em ${allClientServices.filter(isPriced).length} serviço(s) com preço.`);
   }
 
   doc.end();

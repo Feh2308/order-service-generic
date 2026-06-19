@@ -19,6 +19,14 @@ function sqlIdentifier(value) {
 
 const STORAGE_TABLE = sqlIdentifier(config.DB_STORAGE_TABLE);
 
+const WORKFLOW_STATUS = {
+  WAITING_PRICE: "AGUARDANDO_PRECO",
+  PRICED: "PRECIFICADA",
+  SENT_TO_CLIENT: "ENVIADA_CLIENTE",
+  FINISHED: "FINALIZADA",
+  CANCELLED: "CANCELADA"
+};
+
 function now() {
   return new Date().toISOString();
 }
@@ -163,6 +171,10 @@ function normalizeLoadedData(loaded) {
     if (!("financeNotes" in service)) service.financeNotes = "";
     if (!("pricedAt" in service)) service.pricedAt = service.priceStatus === "PRICED" ? service.updatedAt || service.finishedAt || null : null;
     if (!("pricedBy" in service)) service.pricedBy = null;
+    if (!("sentToClientAt" in service)) service.sentToClientAt = null;
+    if (!("sentToClientBy" in service)) service.sentToClientBy = null;
+    if (!("sentToClientChannel" in service)) service.sentToClientChannel = null;
+    service.workflowStatus = workflowStatusFor(service);
     if (!Array.isArray(service.materials)) service.materials = [];
     if (!("startLocation" in service)) service.startLocation = null;
     if (!("finalLocation" in service)) service.finalLocation = null;
@@ -211,7 +223,7 @@ async function loadPostgres() {
 async function load() {
   if (config.DB_CLIENT === "json") return loadJson();
   if (config.DB_CLIENT === "postgres") return loadPostgres();
-  throw new Error(`DB_CLIENT=${config.DB_CLIENT} nao suportado. Use json ou postgres.`);
+  throw new Error(`DB_CLIENT=${config.DB_CLIENT} não suportado. Use json ou postgres.`);
 }
 
 async function savePostgres(nextDb) {
@@ -331,6 +343,7 @@ function publicService(service) {
 
   return {
     ...service,
+    workflowStatus: workflowStatusFor(service),
     client: client ? publicClient(client) : null,
     team: team ? publicTeam(team) : null,
     employees: service.employeeIds
@@ -338,6 +351,24 @@ function publicService(service) {
       .filter(Boolean)
       .map(publicEmployee)
   };
+}
+
+function isServicePriced(service) {
+  return service.priceStatus === "PRICED" && Number(service.price) > 0;
+}
+
+function isServiceWaitingPrice(service) {
+  return service.status === "done" && !isServicePriced(service);
+}
+
+function workflowStatusFor(service) {
+  if (service.status === "cancelled") return WORKFLOW_STATUS.CANCELLED;
+  if (service.sentToClientAt || service.workflowStatus === WORKFLOW_STATUS.SENT_TO_CLIENT) {
+    return WORKFLOW_STATUS.SENT_TO_CLIENT;
+  }
+  if (isServicePriced(service)) return WORKFLOW_STATUS.PRICED;
+  if (service.status === "done") return WORKFLOW_STATUS.WAITING_PRICE;
+  return service.workflowStatus || "";
 }
 
 async function addEvent(type, message, details = {}) {
@@ -366,6 +397,9 @@ function dashboard() {
   const inProgress = db.services.filter((service) => service.status === "in_progress").length;
   const done = db.services.filter((service) => service.status === "done").length;
   const cancelled = db.services.filter((service) => service.status === "cancelled").length;
+  const pendingPricing = db.services.filter(isServiceWaitingPrice).length;
+  const pricedServices = db.services.filter(isServicePriced).length;
+  const sentToClient = db.services.filter((service) => workflowStatusFor(service) === WORKFLOW_STATUS.SENT_TO_CLIENT).length;
   const activeEmployees = db.employees.filter((employee) => employee.active).length;
   const clients = db.clients.length;
   const materials = db.materials.length;
@@ -377,6 +411,9 @@ function dashboard() {
     inProgress,
     done,
     cancelled,
+    pendingPricing,
+    pricedServices,
+    sentToClient,
     clients,
     materials,
     teams,
@@ -480,7 +517,7 @@ async function createEmployee({ name, phone, pin }) {
   const employee = makeEmployee(normalizeText(name), normalizeText(phone), normalizeText(pin));
   db.employees.push(employee);
   await save(db);
-  await addEvent("employee.created", `FuncionÃ¡rio ${employee.name} cadastrado.`, { employeeId: employee.id });
+  await addEvent("employee.created", `Funcionário ${employee.name} cadastrado.`, { employeeId: employee.id });
   return adminEmployee(employee);
 }
 
@@ -569,7 +606,7 @@ async function syncTeamServices(teamId) {
 
   if (updates.length) {
     await save(db);
-    await addEvent("team.services_synced", `Servicos da equipe ${team.name} atualizados.`, { teamId: team.id });
+    await addEvent("team.services_synced", `Serviços da equipe ${team.name} atualizados.`, { teamId: team.id });
   }
   return updates;
 }
@@ -605,7 +642,7 @@ async function updateEmployee(employeeId, payload) {
   }
   employee.updatedAt = now();
   await save(db);
-  await addEvent("employee.updated", `FuncionÃ¡rio ${employee.name} atualizado.`, { employeeId: employee.id });
+  await addEvent("employee.updated", `Funcionário ${employee.name} atualizado.`, { employeeId: employee.id });
   return adminEmployee(employee);
 }
 
@@ -633,7 +670,7 @@ async function deleteEmployee(employeeId) {
   });
 
   await save(db);
-  await addEvent("employee.deleted", `Funcionario ${employee.name} excluido.`, { employeeId: employee.id });
+  await addEvent("employee.deleted", `Funcionário ${employee.name} excluído.`, { employeeId: employee.id });
   return { employee: adminEmployee(employee) };
 }
 
@@ -656,7 +693,7 @@ async function deleteTeam(teamId) {
   team.employeeIds = [];
 
   await save(db);
-  await addEvent("team.deleted", `Equipe ${team.name} excluida.`, { teamId: team.id });
+  await addEvent("team.deleted", `Equipe ${team.name} excluída.`, { teamId: team.id });
   return { team: publicTeam(team), previousEmployeeIds };
 }
 
@@ -734,6 +771,7 @@ async function createService(payload, adminId) {
     notes: normalizeText(payload.notes),
     price: 0,
     priceStatus: "PENDING",
+    workflowStatus: "",
     financeNotes: "",
     pricedAt: null,
     pricedBy: null,
@@ -760,7 +798,7 @@ async function createService(payload, adminId) {
 
   db.services.push(service);
   await save(db);
-  await addEvent("service.created", `ServiÃ§o ${service.code} enviado aos funcionÃ¡rios.`, {
+  await addEvent("service.created", `Serviço ${service.code} enviado aos funcionários.`, {
     serviceId: service.id,
     employeeIds: service.employeeIds
   });
@@ -787,7 +825,7 @@ async function updateService(serviceId, payload) {
   if (!service.teamId && Array.isArray(payload.employeeIds)) service.employeeIds = normalizeEmployeeIds(payload.employeeIds);
   service.updatedAt = now();
   await save(db);
-  await addEvent("service.updated", `ServiÃ§o ${service.code} atualizado.`, { serviceId: service.id });
+  await addEvent("service.updated", `Serviço ${service.code} atualizado.`, { serviceId: service.id });
   return publicService(service);
 }
 
@@ -797,10 +835,11 @@ async function cancelService(serviceId) {
   if (service.status === "done") return { locked: true, service: publicService(service) };
 
   service.status = "cancelled";
+  service.workflowStatus = WORKFLOW_STATUS.CANCELLED;
   service.cancelledAt = now();
   service.updatedAt = now();
   await save(db);
-  await addEvent("service.cancelled", `ServiÃ§o ${service.code} cancelado.`, { serviceId: service.id });
+  await addEvent("service.cancelled", `Serviço ${service.code} cancelado.`, { serviceId: service.id });
   return publicService(service);
 }
 
@@ -847,7 +886,7 @@ function normalizeServicePhoto(photo, stage, employeeId) {
   const imageDataUrl = normalizeText(photo.imageDataUrl);
   if (!imageDataUrl.startsWith("data:image/")) return null;
 
-  const fallbackLabel = stage === "before" ? "Antes do servico" : "Depois do servico";
+  const fallbackLabel = stage === "before" ? "Antes do serviço" : "Depois do serviço";
   return {
     stage,
     label: normalizeText(photo.label) || fallbackLabel,
@@ -890,7 +929,7 @@ async function startService(serviceId, employeeId, payload = {}) {
   await save(db);
 
   const employee = db.employees.find((item) => item.id === employeeId);
-  await addEvent("service.started", `${employee?.name || "FuncionÃ¡rio"} iniciou ${service.code}.`, {
+  await addEvent("service.started", `${employee?.name || "Funcionário"} iniciou ${service.code}.`, {
     serviceId: service.id,
     employeeId
   });
@@ -930,6 +969,7 @@ async function finishService(serviceId, employeeId, payload = {}) {
   if (service.priceStatus !== "PRICED") {
     service.price = 0;
     service.priceStatus = "PENDING";
+    service.workflowStatus = WORKFLOW_STATUS.WAITING_PRICE;
     service.financeNotes = "";
     service.pricedAt = null;
     service.pricedBy = null;
@@ -938,7 +978,7 @@ async function finishService(serviceId, employeeId, payload = {}) {
   await save(db);
 
   const employee = db.employees.find((item) => item.id === employeeId);
-  await addEvent("service.finished", `${employee?.name || "FuncionÃ¡rio"} finalizou ${service.code}.`, {
+  await addEvent("service.finished", `${employee?.name || "Funcionário"} finalizou ${service.code}.`, {
     serviceId: service.id,
     employeeId
   });
@@ -955,16 +995,38 @@ async function priceService(serviceId, adminId, payload = {}) {
 
   service.price = price;
   service.priceStatus = "PRICED";
+  service.workflowStatus = WORKFLOW_STATUS.PRICED;
   service.financeNotes = normalizeText(payload.financeNotes);
   service.pricedAt = now();
   service.pricedBy = adminId;
   service.updatedAt = now();
   await save(db);
 
-  await addEvent("service.priced", `Preco do servico ${service.code} definido.`, {
+  await addEvent("service.priced", `Preço do serviço ${service.code} definido.`, {
     serviceId: service.id,
     adminId,
     price
+  });
+  return publicService(service);
+}
+
+async function markServiceSentToClient(serviceId, adminId, payload = {}) {
+  const service = db.services.find((item) => item.id === serviceId);
+  if (!service) return null;
+  if (!isServicePriced(service)) return { invalidStatus: true, service: publicService(service) };
+
+  const channel = normalizeText(payload.channel) || "manual";
+  service.workflowStatus = WORKFLOW_STATUS.SENT_TO_CLIENT;
+  service.sentToClientAt = now();
+  service.sentToClientBy = adminId;
+  service.sentToClientChannel = channel;
+  service.updatedAt = now();
+  await save(db);
+
+  await addEvent("service.sent_to_client", `Serviço ${service.code} marcado como enviado ao cliente.`, {
+    serviceId: service.id,
+    adminId,
+    channel
   });
   return publicService(service);
 }
@@ -1007,8 +1069,10 @@ module.exports = {
   startService,
   finishService,
   priceService,
+  markServiceSentToClient,
+  workflowStatusFor,
   get db() {
-    if (!db) throw new Error("Store ainda nao inicializado.");
+    if (!db) throw new Error("Store ainda não inicializado.");
     return db;
   }
 };

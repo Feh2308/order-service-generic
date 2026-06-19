@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#18332f">
     <title>Admin | EG Automações Services</title>
@@ -58,7 +58,7 @@
           <button class="nav-button" type="button" data-tab="materials"><span class="nav-icon"><i data-lucide="package-search"></i></span>Materiais</button>
           <button class="nav-button" type="button" data-tab="teams"><span class="nav-icon"><i data-lucide="users-round"></i></span>Equipes</button>
           <button class="nav-button" type="button" data-tab="tracking"><span class="nav-icon"><i data-lucide="kanban"></i></span>Acompanhamento</button>
-          <button class="nav-button" type="button" data-tab="services"><span class="nav-icon"><i data-lucide="clipboard-list"></i></span>Serviços</button>
+          <button class="nav-button" type="button" data-tab="services"><span class="nav-icon"><i data-lucide="clipboard-list"></i></span>Serviços<span id="pendingPriceNavBadge" class="nav-badge hidden">0</span></button>
           <button class="nav-button" type="button" data-tab="employees"><span class="nav-icon"><i data-lucide="id-card"></i></span>Funcionários</button>
           <button class="nav-button" type="button" data-tab="settings"><span class="nav-icon"><i data-lucide="settings"></i></span>Configurações</button>
         </nav>
@@ -81,6 +81,7 @@
         </header>
 
         <section id="dashboardTab" class="tab-view">
+          <div id="pendingPricingAlert" class="pending-pricing-alert hidden"></div>
           <div id="statsGrid" class="grid dashboard-grid"></div>
           <div class="panel" style="margin-top: 16px;">
             <div class="panel-header">
@@ -154,8 +155,8 @@
           <section class="panel client-history-panel">
             <div class="panel-header">
               <div>
-                <h2>Historico financeiro por cliente</h2>
-                <p>Consulte servicos por cliente, periodo e status com soma automatica dos valores.</p>
+                <h2>Histórico financeiro por cliente</h2>
+                <p>Consulte serviços por cliente, período e status com soma automática dos valores.</p>
               </div>
             </div>
             <div class="panel-body filter-grid">
@@ -170,7 +171,7 @@
                 <input id="historyDateFromFilter" class="input" type="date">
               </label>
               <label class="field">
-                <span>Ate</span>
+                <span>Até</span>
                 <input id="historyDateToFilter" class="input" type="date">
               </label>
               <label class="field">
@@ -179,12 +180,15 @@
                   <option value="all">Todos</option>
                   <option value="scheduled">Agendados</option>
                   <option value="in_progress">Iniciados</option>
+                  <option value="pending_price">Aguardando preço</option>
+                  <option value="priced">Precificados</option>
+                  <option value="sent_client">Enviados ao cliente</option>
                   <option value="done">Finalizados</option>
                   <option value="cancelled">Cancelados</option>
                 </select>
               </label>
               <button id="clearHistoryFiltersButton" class="ghost-button filter-clear-button" type="button"><i data-lucide="filter-x"></i>Limpar filtros</button>
-              <button id="clientReportButton" class="primary-button filter-clear-button" type="button"><i data-lucide="file-text"></i>Gerar relatorio do cliente</button>
+              <button id="clientReportButton" class="primary-button filter-clear-button" type="button"><i data-lucide="file-text"></i>Gerar relatório do cliente</button>
             </div>
             <div id="clientHistorySummary" class="panel-body history-summary"></div>
             <div id="clientHistoryList" class="panel-body list"></div>
@@ -282,6 +286,16 @@
         </section>
 
         <section id="servicesTab" class="tab-view hidden">
+          <section class="panel pending-pricing-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Serviços aguardando preço</h2>
+                <p>Serviços finalizados pelo funcionário que precisam de valor definido pelo admin.</p>
+              </div>
+            </div>
+            <div id="pendingPricingList" class="panel-body list"></div>
+          </section>
+
           <div class="grid two-column">
             <section class="panel">
               <div class="panel-header">
@@ -320,7 +334,7 @@
                 </label>
                 <label class="field full">
                   <span>Endereço</span>
-                  <input class="input" name="address" placeholder="Rua, numero, bairro, cidade" required>
+                  <input class="input" name="address" placeholder="Rua, número, bairro, cidade" required>
                 </label>
                 <label class="field full">
                   <span>Funcionários</span>
@@ -385,6 +399,9 @@
                     <option value="all">Todos</option>
                     <option value="scheduled">Agendados</option>
                     <option value="in_progress">Iniciados</option>
+                    <option value="pending_price">Aguardando preço</option>
+                    <option value="priced">Precificados</option>
+                    <option value="sent_client">Enviados ao cliente</option>
                     <option value="done">Finalizados</option>
                     <option value="cancelled">Cancelados</option>
                   </select>
@@ -394,16 +411,6 @@
               <div id="serviceList" class="panel-body list"></div>
             </section>
           </div>
-
-          <section class="panel pending-pricing-panel">
-            <div class="panel-header">
-              <div>
-                <h2>ServiÃ§os aguardando preÃ§o</h2>
-                <p>ServiÃ§os finalizados pelo funcionÃ¡rio que precisam de valor definido pelo admin.</p>
-              </div>
-            </div>
-            <div id="pendingPricingList" class="panel-body list"></div>
-          </section>
         </section>
 
         <section id="employeesTab" class="tab-view hidden">
@@ -486,14 +493,14 @@
               <div class="panel-header">
                 <div>
                   <h2>Servidor conectado</h2>
-                  <p>Endereco usado por este painel para falar com a API.</p>
+                  <p>Endereço usado por este painel para falar com a API.</p>
                 </div>
               </div>
               <div class="panel-body list">
                 <div class="employee-row">
                   <div>
                     <strong id="settingsServerUrl">Servidor</strong>
-                    <span>Use esta URL tambem nos apps instalados.</span>
+                    <span>Use esta URL também nos apps instalados.</span>
                   </div>
                 </div>
               </div>
@@ -508,7 +515,7 @@
         <div class="modal-header">
           <div>
             <h2 id="pdfOptionsTitle">Gerar PDF</h2>
-            <p id="pdfOptionsSubtitle">Escolha as informacoes que vao aparecer no relatorio.</p>
+            <p id="pdfOptionsSubtitle">Escolha as informações que vão aparecer no relatório.</p>
           </div>
           <button id="closePdfOptionsButton" class="ghost-button icon-button" type="button" aria-label="Fechar"><i data-lucide="x"></i></button>
         </div>
@@ -524,24 +531,24 @@
       <div class="modal-card">
         <div class="modal-header">
           <div>
-            <h2 id="priceModalTitle">Adicionar preÃ§o</h2>
-            <p id="priceModalSubtitle">Defina o valor final do serviÃ§o.</p>
+            <h2 id="priceModalTitle">Adicionar preço</h2>
+            <p id="priceModalSubtitle">Defina o valor final do serviço.</p>
           </div>
           <button id="closePriceModalButton" class="ghost-button icon-button" type="button" aria-label="Fechar"><i data-lucide="x"></i></button>
         </div>
         <form id="priceForm" class="modal-body form-grid">
           <input type="hidden" name="serviceId">
           <label class="field full">
-            <span>Valor do serviÃ§o</span>
+            <span>Valor do serviço</span>
             <input class="input" name="price" inputmode="decimal" placeholder="R$ 0,00" required>
           </label>
           <label class="field full">
-            <span>ObservaÃ§Ã£o financeira</span>
+            <span>Observação financeira</span>
             <textarea class="textarea" name="financeNotes" placeholder="Desconto, forma de pagamento, adicional, combinado com cliente..."></textarea>
           </label>
           <div class="field full modal-actions-inline">
             <button id="cancelPriceButton" class="ghost-button" type="button"><i data-lucide="x-circle"></i>Cancelar</button>
-            <button class="primary-button" type="submit"><i data-lucide="save"></i>Salvar preÃ§o</button>
+            <button class="primary-button" type="submit"><i data-lucide="save"></i>Salvar preço</button>
           </div>
         </form>
       </div>

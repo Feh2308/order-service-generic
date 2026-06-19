@@ -223,7 +223,7 @@ function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Nao foi possivel ler a foto."));
+    reader.onerror = () => reject(new Error("Não foi possível ler a foto."));
     reader.readAsDataURL(file);
   });
 }
@@ -232,7 +232,7 @@ function loadImage(dataUrl) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Nao foi possivel preparar a foto."));
+    image.onerror = () => reject(new Error("Não foi possível preparar a foto."));
     image.src = dataUrl;
   });
 }
@@ -252,7 +252,7 @@ async function fileToServicePhoto(file, stage) {
   const imageDataUrl = canvas.toDataURL("image/jpeg", 0.78);
   return {
     stage,
-    label: stage === "before" ? "Antes do servico" : "Depois do servico",
+    label: stage === "before" ? "Antes do serviço" : "Depois do serviço",
     imageDataUrl,
     capturedAt: new Date().toISOString(),
     fileName: file.name || ""
@@ -308,7 +308,7 @@ async function api(path, options = {}) {
 
   let body = options.body;
   if (body && !(body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
+    headers["Content-Type"] = "application/json; charset=utf-8";
     body = JSON.stringify(body);
   }
 
@@ -426,7 +426,7 @@ function renderTeams() {
   list.innerHTML = state.teams.length
     ? state.teams
         .map((team) => {
-          const leaderName = team.leader?.name || "Sem lider";
+          const leaderName = team.leader?.name || "Sem líder";
           const isLeader = team.leaderId === state.user?.id;
           const teammates = (team.employees || []).filter((employee) => employee.id !== state.user?.id);
           const activeServices = state.services.filter((service) => service.teamId === team.id && service.status !== "cancelled").length;
@@ -434,20 +434,20 @@ function renderTeams() {
             <div class="employee-row">
               <div>
                 <strong>${escapeHTML(team.name)}</strong>
-                <span>Lider: ${escapeHTML(leaderName)} - ${isLeader ? "voce e responsavel" : "membro da equipe"}</span>
-                <span>${activeServices} servico(s) vinculados</span>
+                <span>Líder: ${escapeHTML(leaderName)} - ${isLeader ? "você é responsável" : "membro da equipe"}</span>
+                <span>${activeServices} serviço(s) vinculados</span>
                 <div class="team-member-list">
                   ${teammates.length
                     ? teammates.map((employee) => `<span class="badge scheduled">${escapeHTML(employee.name)}</span>`).join("")
                     : `<span class="badge done">Sem companheiros</span>`}
                 </div>
               </div>
-              <span class="badge ${isLeader ? "done" : "scheduled"}">${isLeader ? "Lider" : "Membro"}</span>
+              <span class="badge ${isLeader ? "done" : "scheduled"}">${isLeader ? "Líder" : "Membro"}</span>
             </div>
           `;
         })
         .join("")
-    : `<div class="empty">Voce ainda nao esta em uma equipe.</div>`;
+    : `<div class="empty">Você ainda não está em uma equipe.</div>`;
   refreshIcons();
 }
 
@@ -504,7 +504,7 @@ function photoSummary(servicePhotos = {}) {
 
   return `
     <div class="photo-summary">
-      <strong>Fotos do servico</strong>
+      <strong>Fotos do serviço</strong>
       <div class="photo-grid">
         ${photos
           .map(
@@ -523,7 +523,7 @@ function photoSummary(servicePhotos = {}) {
 
 function teamBlock(service) {
   if (!service.team) return "";
-  const leaderName = service.team.leader?.name || "Sem lider";
+  const leaderName = service.team.leader?.name || "Sem líder";
   const teammates = (service.team.employees || [])
     .filter((employee) => employee.id !== state.user?.id)
     .map((employee) => employee.name)
@@ -531,7 +531,7 @@ function teamBlock(service) {
   return `
     <div class="materials-summary team-summary">
       <strong>Equipe: ${escapeHTML(service.team.name)}</strong>
-      <span>Lider responsavel: ${escapeHTML(leaderName)}</span>
+      <span>Líder responsável: ${escapeHTML(leaderName)}</span>
       <span>Companheiros: ${escapeHTML(teammates || "Sem companheiros")}</span>
     </div>
   `;
@@ -539,11 +539,11 @@ function teamBlock(service) {
 
 function leaderProtocolNotice(service) {
   if (!service.team || service.team.leaderId === state.user?.id) return "";
-  const leaderName = service.team.leader?.name || "lider da equipe";
+  const leaderName = service.team.leader?.name || "líder da equipe";
   return `
     <div class="location-summary">
-      <strong>Responsavel pelo protocolo</strong>
-      <span>${escapeHTML(leaderName)} inicia e finaliza este servico pela equipe.</span>
+      <strong>Responsável pelo protocolo</strong>
+      <span>${escapeHTML(leaderName)} inicia e finaliza este serviço pela equipe.</span>
     </div>
   `;
 }
@@ -558,13 +558,13 @@ function startControls(service) {
         <input class="input" data-start-location-input data-id="${escapeHTML(service.id)}" value="${escapeHTML(formatLocation(location))}" placeholder="Cole o link do Maps, digite o local ou use GPS">
       </label>
       <label class="field">
-        <span>Foto antes do servico</span>
+        <span>Foto antes do serviço</span>
         <input class="input" type="file" accept="image/*" capture="environment" data-before-photo-input data-id="${escapeHTML(service.id)}">
       </label>
       ${
         beforePhoto?.imageDataUrl
           ? `<div class="photo-preview">
-              <img src="${escapeHTML(beforePhoto.imageDataUrl)}" alt="Foto antes do servico">
+              <img src="${escapeHTML(beforePhoto.imageDataUrl)}" alt="Foto antes do serviço">
               <span>Foto antes salva para envio.</span>
               <button class="ghost-button compact-link" type="button" data-action="clear-before-photo" data-id="${escapeHTML(service.id)}"><i data-lucide="trash-2"></i>Remover</button>
             </div>`
@@ -594,13 +594,13 @@ function finishControls(service) {
         <input class="input" data-final-location-input data-id="${escapeHTML(service.id)}" value="${escapeHTML(formatLocation(finalLocation))}" placeholder="Cole o link do Maps, digite o local ou use GPS">
       </label>
       <label class="field">
-        <span>Foto depois do servico</span>
+        <span>Foto depois do serviço</span>
         <input class="input" type="file" accept="image/*" capture="environment" data-after-photo-input data-id="${escapeHTML(service.id)}">
       </label>
       ${
         afterPhoto?.imageDataUrl
           ? `<div class="photo-preview">
-              <img src="${escapeHTML(afterPhoto.imageDataUrl)}" alt="Foto depois do servico">
+              <img src="${escapeHTML(afterPhoto.imageDataUrl)}" alt="Foto depois do serviço">
               <span>Foto depois salva para finalizar.</span>
               <button class="ghost-button compact-link" type="button" data-action="clear-after-photo" data-id="${escapeHTML(service.id)}"><i data-lucide="trash-2"></i>Remover</button>
             </div>`
@@ -613,7 +613,7 @@ function finishControls(service) {
       <div class="report-choice">
         <label class="checkbox-item">
           <input type="checkbox" data-report-send-input data-id="${escapeHTML(service.id)}" ${report.sendToClient ? "checked" : ""}>
-          <span>Preparar envio do relatorio ao cliente</span>
+          <span>Preparar envio do relatório ao cliente</span>
         </label>
         <label class="field">
           <span>E-mail do cliente</span>
@@ -652,7 +652,7 @@ function serviceCard(service) {
           <div class="meta">
             <span>${formatDateTime(service)}</span>
             <span>${escapeHTML(service.location)}</span>
-            <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
+            <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
             <span>${escapeHTML(statusLabels[service.status] || service.status)}</span>
           </div>
         </div>
@@ -678,8 +678,8 @@ function serviceCard(service) {
           <span>${escapeHTML(service.title)}</span>
         </div>
         <div>
-          <strong>Valor do servico</strong>
-          <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
+          <strong>Valor do serviço</strong>
+          <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
         </div>
       </div>
       ${teamBlock(service)}
@@ -725,11 +725,11 @@ async function setServiceStatus(serviceId, action) {
   const endpoint = action === "start" ? "start" : "finish";
   const currentService = state.services.find((service) => service.id === serviceId);
   if (action === "start" && !getPendingStartLocation(serviceId)) {
-    toast("Localizacao", "Informe a localizacao de inicio antes de iniciar.", "error");
+    toast("Localização", "Informe a localização de início antes de iniciar.", "error");
     return;
   }
   if (action === "finish" && !getPendingFinalLocation(serviceId)) {
-    toast("Localizacao", "Informe a localizacao final antes de finalizar.", "error");
+    toast("Localização", "Informe a localização final antes de finalizar.", "error");
     return;
   }
   if (action === "start" && !getPendingBeforePhoto(serviceId)) {
@@ -799,7 +799,7 @@ async function captureStartLocation(serviceId) {
 
 async function captureFinalLocation(serviceId) {
   try {
-    toast("Localizacao", "Buscando localizacao final...");
+    toast("Localização", "Buscando localização final...");
     const position = await getBrowserPosition();
     const { latitude, longitude, accuracy } = position.coords;
     setPendingFinalLocation(serviceId, {
@@ -812,9 +812,9 @@ async function captureFinalLocation(serviceId) {
       capturedAt: new Date().toISOString()
     });
     renderServices();
-    toast("Localizacao", "Localizacao final capturada.");
+    toast("Localização", "Localização final capturada.");
   } catch (error) {
-    toast("Localizacao", error.message || "Nao foi possivel pegar o GPS. Digite ou cole o link da localizacao.", "error");
+    toast("Localização", error.message || "Não foi possível pegar o GPS. Digite ou cole o link da localização.", "error");
   }
 }
 
@@ -835,7 +835,7 @@ async function handleServicePhotoInput(input, stage) {
     renderServices();
     toast("Foto", stage === "before" ? "Foto antes salva." : "Foto depois salva.");
   } catch (error) {
-    toast("Foto", error.message || "Nao foi possivel salvar a foto.", "error");
+    toast("Foto", error.message || "Não foi possível salvar a foto.", "error");
   } finally {
     input.value = "";
   }

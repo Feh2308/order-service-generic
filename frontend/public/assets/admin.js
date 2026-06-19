@@ -25,11 +25,21 @@ const statusLabels = {
   cancelled: "Cancelado"
 };
 
+const workflowLabels = {
+  AGUARDANDO_PRECO: "AGUARDANDO_PREÇO",
+  PRECIFICADA: "PRECIFICADA",
+  ENVIADA_CLIENTE: "ENVIADA AO CLIENTE",
+  FINALIZADA: "FINALIZADA",
+  CANCELADA: "CANCELADA"
+};
+
 const trackingStatuses = [
   { id: "scheduled", title: "Agendados", icon: "calendar-clock" },
   { id: "in_progress", title: "Iniciados", icon: "play-circle" },
-  { id: "cancelled", title: "Cancelados", icon: "x-circle" },
-  { id: "done", title: "Finalizados", icon: "check-circle-2" }
+  { id: "pending_price", title: "Aguardando preço", icon: "badge-dollar-sign" },
+  { id: "priced", title: "Precificados", icon: "circle-dollar-sign" },
+  { id: "sent_client", title: "Enviados ao cliente", icon: "send" },
+  { id: "cancelled", title: "Cancelados", icon: "x-circle" }
 ];
 
 const pageText = {
@@ -41,46 +51,46 @@ const pageText = {
   employees: ["Funcionários", "Gerencie quem recebe os serviços."]
 };
 
-pageText.tracking = ["Acompanhamento", "Servicos separados por agendados, iniciados, cancelados e finalizados."];
+pageText.tracking = ["Acompanhamento", "Serviços separados por agendados, iniciados, aguardando preço, precificados, enviados e cancelados."];
 pageText.settings = ["Configurações", "Atualize o acesso do administrador e a conexão."];
 
 const pdfFieldsByType = {
   service: [
     ["clientName", "Nome do cliente", true],
     ["phone", "Telefone", true],
-    ["serviceName", "Nome do servico", true],
-    ["description", "Descricao do servico", true],
-    ["price", "Valor do servico", true],
+    ["serviceName", "Nome do serviço", true],
+    ["description", "Descrição do serviço", true],
+    ["price", "Valor do serviço", true],
     ["createdAt", "Data de abertura", true],
-    ["finishedAt", "Data de finalizacao", true],
+    ["finishedAt", "Data de finalização", true],
     ["status", "Status", true],
-    ["priceStatus", "Status de precificacao", true],
-    ["notes", "Observacoes", true],
-    ["financeNotes", "Observacoes financeiras", true],
-    ["responsibleEmployee", "Funcionario responsavel", true],
+    ["priceStatus", "Status de precificação", true],
+    ["notes", "Observações", true],
+    ["financeNotes", "Observações financeiras", true],
+    ["responsibleEmployee", "Funcionário responsável", true],
     ["photos", "Fotos antes/depois", true],
     ["signature", "Assinatura, se existir", true],
-    ["clientHistory", "Historico completo de servicos do cliente", false],
-    ["pricedServices", "Mostrar servicos com preco", true],
-    ["unpricedServices", "Mostrar servicos sem preco", true],
+    ["clientHistory", "Histórico completo de serviços do cliente", false],
+    ["pricedServices", "Mostrar serviços com preço", true],
+    ["unpricedServices", "Mostrar serviços sem preço", true],
     ["totalValue", "Soma total dos valores", false]
   ],
   client: [
     ["clientName", "Nome do cliente", true],
     ["phone", "Telefone", true],
-    ["clientNotes", "Observacoes gerais", true],
-    ["period", "Periodo selecionado", true],
-    ["clientHistory", "Historico completo de servicos do cliente", true],
-    ["serviceName", "Nome do servico", true],
+    ["clientNotes", "Observações gerais", true],
+    ["period", "Período selecionado", true],
+    ["clientHistory", "Histórico completo de serviços do cliente", true],
+    ["serviceName", "Nome do serviço", true],
     ["createdAt", "Data", true],
     ["status", "Status", true],
-    ["priceStatus", "Status de precificacao", true],
-    ["price", "Valor do servico", true],
-    ["financeNotes", "Observacoes financeiras", false],
-    ["responsibleEmployee", "Funcionario responsavel", true],
-    ["notes", "Observacoes", false],
-    ["pricedServices", "Mostrar servicos com preco", true],
-    ["unpricedServices", "Mostrar servicos sem preco", true],
+    ["priceStatus", "Status de precificação", true],
+    ["price", "Valor do serviço", true],
+    ["financeNotes", "Observações financeiras", false],
+    ["responsibleEmployee", "Funcionário responsável", true],
+    ["notes", "Observações", false],
+    ["pricedServices", "Mostrar serviços com preço", true],
+    ["unpricedServices", "Mostrar serviços sem preço", true],
     ["totalValue", "Soma total dos valores", true]
   ]
 };
@@ -119,8 +129,38 @@ function isServicePriced(service) {
   return service?.priceStatus === "PRICED" && servicePrice(service) > 0;
 }
 
+function isPendingPricing(service) {
+  return service?.status === "done" && !isServicePriced(service);
+}
+
+function isSentToClient(service) {
+  return service?.workflowStatus === "ENVIADA_CLIENTE" || Boolean(service?.sentToClientAt);
+}
+
+function workflowStatus(service) {
+  if (service?.status === "cancelled") return "CANCELADA";
+  if (isSentToClient(service)) return "ENVIADA_CLIENTE";
+  if (isServicePriced(service)) return "PRECIFICADA";
+  if (service?.status === "done") return "AGUARDANDO_PRECO";
+  return service?.workflowStatus || service?.status || "";
+}
+
+function workflowStatusLabel(service) {
+  const status = workflowStatus(service);
+  return workflowLabels[status] || statusLabels[status] || status || "Sem status";
+}
+
+function workflowBadgeClass(service) {
+  const status = workflowStatus(service);
+  if (status === "AGUARDANDO_PRECO") return "pending_price";
+  if (status === "PRECIFICADA") return "priced";
+  if (status === "ENVIADA_CLIENTE") return "sent_client";
+  if (status === "CANCELADA") return "cancelled";
+  return service?.status || "scheduled";
+}
+
 function priceStatusLabel(service) {
-  return isServicePriced(service) ? "Finalizada com preco" : "Finalizada aguardando preco";
+  return isServicePriced(service) ? "PRECIFICADA" : "AGUARDANDO_PREÇO";
 }
 
 function formatCurrency(value) {
@@ -173,17 +213,17 @@ function serviceFinishedDate(service) {
 function buildWhatsAppMessage(service) {
   const customerName = service.client?.name || service.customer || "Cliente";
   const lines = [
-    `Ola, ${customerName}. Segue o resumo da Ordem de Servico ${service.code}.`,
+    `Olá, ${customerName}. Segue o resumo da Ordem de Serviço ${service.code}.`,
     "",
     `Cliente: ${customerName}`,
-    `Servico: ${service.title || ""}`,
+    `Serviço: ${service.title || ""}`,
     `Status: ${statusLabels[service.status] || service.status}`,
     `Valor: ${formatCurrency(servicePrice(service))}`,
-    `Finalizado em: ${serviceFinishedDate(service) || "Nao informado"}`
+    `Finalizado em: ${serviceFinishedDate(service) || "Não informado"}`
   ];
 
   if (service.notes) {
-    lines.push("", `Observacoes: ${service.notes}`);
+    lines.push("", `Observações: ${service.notes}`);
   }
 
   return lines.join("\n");
@@ -235,7 +275,7 @@ async function api(path, options = {}) {
 
   let body = options.body;
   if (body && !(body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
+    headers["Content-Type"] = "application/json; charset=utf-8";
     body = JSON.stringify(body);
   }
 
@@ -243,7 +283,7 @@ async function api(path, options = {}) {
   const response = await fetch(url, { ...options, headers, body });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || "Erro ao processar solicitacao.");
+    throw new Error(payload.error || "Erro ao processar solicitação.");
   }
   return payload;
 }
@@ -257,7 +297,7 @@ async function apiBlob(path, options = {}) {
 
   let body = options.body;
   if (body && !(body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
+    headers["Content-Type"] = "application/json; charset=utf-8";
     body = JSON.stringify(body);
   }
 
@@ -272,7 +312,7 @@ async function apiBlob(path, options = {}) {
   const match = disposition.match(/filename="?([^"]+)"?/i);
   return {
     blob,
-    fileName: match?.[1] || "relatorio.pdf"
+    fileName: match?.[1] || "relatório.pdf"
   };
 }
 
@@ -313,6 +353,7 @@ function switchTab(tab) {
   $("#pageTitle").textContent = pageText[tab][0];
   $("#pageSubtitle").textContent = pageText[tab][1];
   if (tab === "settings") renderSettings();
+  renderPricingAlerts();
 }
 
 function connectSocket() {
@@ -321,7 +362,7 @@ function connectSocket() {
   state.socket = socketUrl ? io(socketUrl, { auth: { token: state.token } }) : io({ auth: { token: state.token } });
 
   state.socket.on("connect_error", () => {
-    toast("Conexao em tempo real", "Nao foi possivel conectar aos avisos.", "error");
+    toast("Conexão em tempo real", "Não foi possível conectar aos avisos.", "error");
   });
 
   state.socket.on("dashboard:updated", (dashboard) => {
@@ -429,18 +470,22 @@ async function loadAll() {
 function renderDashboard() {
   const dashboard = state.dashboard || {};
   const stats = [
-    ["Total", dashboard.total || 0],
-    ["Agendados", dashboard.scheduled || 0],
-    ["Iniciados", dashboard.inProgress || 0],
-    ["Finalizados", dashboard.done || 0],
-    ["Clientes", dashboard.clients || 0],
-    ["Materiais", dashboard.materials || 0],
-    ["Equipes", dashboard.teams || 0],
-    ["Equipe ativa", dashboard.activeEmployees || 0]
+    ["Aguardando preço", dashboard.pendingPricing || 0, "alert"],
+    ["Precificados", dashboard.pricedServices || 0, "priced"],
+    ["Enviados ao cliente", dashboard.sentToClient || 0, "sent"],
+    ["Total", dashboard.total || 0, ""],
+    ["Agendados", dashboard.scheduled || 0, ""],
+    ["Iniciados", dashboard.inProgress || 0, ""],
+    ["Finalizados", dashboard.done || 0, ""],
+    ["Cancelados", dashboard.cancelled || 0, ""],
+    ["Clientes", dashboard.clients || 0, ""],
+    ["Materiais", dashboard.materials || 0, ""],
+    ["Equipes", dashboard.teams || 0, ""],
+    ["Equipe ativa", dashboard.activeEmployees || 0, ""]
   ];
 
   $("#statsGrid").innerHTML = stats
-    .map(([label, value]) => `<section class="stat"><span>${label}</span><strong>${value}</strong></section>`)
+    .map(([label, value, modifier]) => `<section class="stat ${modifier ? `stat-${modifier}` : ""}"><span>${label}</span><strong>${value}</strong></section>`)
     .join("");
 
   const events = dashboard.recentEvents || [];
@@ -459,7 +504,35 @@ function renderDashboard() {
         )
         .join("")
     : `<div class="empty">Nenhuma atividade registrada ainda.</div>`;
+  renderPricingAlerts();
   refreshIcons();
+}
+
+function pendingPricingCount() {
+  if (state.services.length) return pendingPricingServices().length;
+  return state.dashboard?.pendingPricing || 0;
+}
+
+function renderPricingAlerts() {
+  const count = pendingPricingCount();
+  const badge = $("#pendingPriceNavBadge");
+  if (badge) {
+    badge.textContent = count > 99 ? "99+" : String(count);
+    badge.classList.toggle("hidden", count === 0);
+  }
+
+  const alert = $("#pendingPricingAlert");
+  if (!alert) return;
+  alert.classList.toggle("hidden", count === 0);
+  if (count > 0) {
+    alert.innerHTML = `
+      <div>
+        <strong>${count} serviço(s) aguardando preço</strong>
+        <span>Finalize a precificação para liberar PDF, WhatsApp e histórico financeiro.</span>
+      </div>
+      <button class="primary-button" type="button" data-alert-action="open-pricing"><i data-lucide="badge-dollar-sign"></i>Ver fila</button>
+    `;
+  }
 }
 
 function renderSettings() {
@@ -470,7 +543,7 @@ function renderSettings() {
   }
   const server = $("#settingsServerUrl");
   if (server) {
-    server.textContent = window.EGRuntime?.getServerUrl?.() || "Servidor nao definido";
+    server.textContent = window.EGRuntime?.getServerUrl?.() || "Servidor não definido";
   }
 }
 
@@ -666,7 +739,7 @@ function photoBlock(servicePhotos = {}) {
 
   return `
     <div class="photo-summary">
-      <strong>Fotos do servico</strong>
+      <strong>Fotos do serviço</strong>
       <div class="photo-grid">
         ${photos
           .map(
@@ -702,7 +775,7 @@ function reportMaterialsTable(materials = []) {
     <table>
       <thead>
         <tr>
-          <th>Codigo</th>
+          <th>Código</th>
           <th>Material</th>
           <th>Qtd.</th>
           <th>Obs.</th>
@@ -737,9 +810,9 @@ function reportPhotoFigure(title, photo) {
 }
 
 function buildReportHtml(service) {
-  const customerName = service.client?.name || service.customer || "Cliente nao informado";
+  const customerName = service.client?.name || service.customer || "Cliente não informado";
   const clientEmail = service.reportPreference?.clientEmail || service.client?.email || "";
-  const employeeNames = (service.employees || []).map((employee) => employee.name).join(", ") || "Sem funcionario";
+  const employeeNames = (service.employees || []).map((employee) => employee.name).join(", ") || "Sem funcionário";
   const teamName = service.team?.name || "";
   const beforePhoto = service.servicePhotos?.before;
   const afterPhoto = service.servicePhotos?.after;
@@ -750,7 +823,7 @@ function buildReportHtml(service) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Relatorio ${escapeHTML(service.code)}</title>
+  <title>Relatório ${escapeHTML(service.code)}</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; padding: 28px; font-family: Arial, sans-serif; color: #17211f; background: #f6f8f7; }
@@ -794,7 +867,7 @@ function buildReportHtml(service) {
     </div>
     <header>
       <div>
-        <h1>Relatorio de servico</h1>
+        <h1>Relatório de serviço</h1>
         <p><strong>EG Automacoes Services</strong></p>
         <p class="muted">${escapeHTML(service.code)} - ${escapeHTML(service.title || "")}</p>
       </div>
@@ -806,24 +879,24 @@ function buildReportHtml(service) {
 
     <section class="grid">
       <div class="box"><strong>Cliente/empresa</strong>${escapeHTML(customerName)}</div>
-      <div class="box"><strong>E-mail do cliente</strong>${escapeHTML(clientEmail || "Nao informado")}</div>
-      <div class="box"><strong>Data e horario</strong>${escapeHTML(formatDateTime(service))}</div>
-      <div class="box"><strong>Valor do servico</strong>${escapeHTML(formatCurrency(servicePrice(service)))}</div>
+      <div class="box"><strong>E-mail do cliente</strong>${escapeHTML(clientEmail || "Não informado")}</div>
+      <div class="box"><strong>Data e horário</strong>${escapeHTML(formatDateTime(service))}</div>
+      <div class="box"><strong>Valor do serviço</strong>${escapeHTML(formatCurrency(servicePrice(service)))}</div>
       <div class="box"><strong>Local</strong>${escapeHTML(service.location || "")}<br><span class="muted">${escapeHTML(service.address || "")}</span></div>
       <div class="box"><strong>Responsaveis</strong>${escapeHTML(teamName ? `${teamName} - ${employeeNames}` : employeeNames)}</div>
-      <div class="box"><strong>Envio ao cliente</strong>${service.reportPreference?.sendToClient ? "Solicitado no encerramento" : "Nao solicitado no encerramento"}</div>
+      <div class="box"><strong>Envio ao cliente</strong>${service.reportPreference?.sendToClient ? "Solicitado no encerramento" : "Não solicitado no encerramento"}</div>
     </section>
 
-    <h2>Descricao</h2>
+    <h2>Descrição</h2>
     <p>${escapeHTML(service.notes || "Sem observacoes.")}</p>
 
     <h2>Materiais</h2>
     ${reportMaterialsTable(service.materials || [])}
 
-    <h2>Comprovantes de localizacao</h2>
+    <h2>Comprovantes de localização</h2>
     <section class="grid">
-      <div class="box"><strong>Inicio</strong>${escapeHTML(formatLocation(service.startLocation) || "Nao informado")}<br><span class="muted">${escapeHTML(shortDate(service.startLocation?.capturedAt))}</span></div>
-      <div class="box"><strong>Final</strong>${escapeHTML(formatLocation(service.finalLocation) || "Nao informado")}<br><span class="muted">${escapeHTML(shortDate(service.finalLocation?.capturedAt))}</span></div>
+      <div class="box"><strong>Início</strong>${escapeHTML(formatLocation(service.startLocation) || "Não informado")}<br><span class="muted">${escapeHTML(shortDate(service.startLocation?.capturedAt))}</span></div>
+      <div class="box"><strong>Final</strong>${escapeHTML(formatLocation(service.finalLocation) || "Não informado")}<br><span class="muted">${escapeHTML(shortDate(service.finalLocation?.capturedAt))}</span></div>
     </section>
 
     <h2>Fotos antes e depois</h2>
@@ -850,7 +923,7 @@ function openServiceReport(serviceId) {
   if (!service) return;
   const reportWindow = window.open("", "_blank");
   if (!reportWindow) {
-    toast("Relatorio", "O navegador bloqueou a janela do relatorio.", "error");
+    toast("Relatório", "O navegador bloqueou a janela do relatório.", "error");
     return;
   }
   reportWindow.document.open();
@@ -862,12 +935,12 @@ async function sendServiceReport(serviceId) {
   const service = state.services.find((item) => item.id === serviceId);
   if (!service) return;
   if (!isServicePriced(service)) {
-    toast("Relatorio", "Defina o preco antes de enviar o relatorio ao cliente.", "error");
+    toast("Relatório", "Defina o preço antes de enviar o relatório ao cliente.", "error");
     return;
   }
   const email = service.reportPreference?.clientEmail || service.client?.email || "";
   if (!email) {
-    toast("Relatorio", "Cadastre o e-mail do cliente para preparar o envio.", "error");
+    toast("Relatório", "Cadastre o e-mail do cliente para preparar o envio.", "error");
     return;
   }
 
@@ -878,12 +951,12 @@ async function sendServiceReport(serviceId) {
     return;
   }
   const customerName = service.client?.name || service.customer || "cliente";
-  const subject = `Relatorio ${service.code} - ${customerName}`;
+  const subject = `Relatório ${service.code} - ${customerName}`;
   const body = [
-    `Ola, segue o relatorio do servico ${service.code}.`,
+    `Olá, segue o relatório do serviço ${service.code}.`,
     "",
     `Cliente: ${customerName}`,
-    `Servico: ${service.title || ""}`,
+    `Serviço: ${service.title || ""}`,
     `Data: ${formatDateTime(service)}`,
     `Valor: ${formatCurrency(servicePrice(service))}`,
     `Local: ${service.location || ""}`,
@@ -891,14 +964,15 @@ async function sendServiceReport(serviceId) {
     "O PDF foi baixado pelo sistema para ser anexado a este e-mail."
   ].join("\n");
   window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  toast("Relatorio", "PDF baixado e e-mail preparado para anexar.");
+  await markServiceSentToClient(serviceId, "email");
+  toast("Relatório", "PDF baixado e e-mail preparado para anexar.");
 }
 
-function sendServiceWhatsApp(serviceId) {
+async function sendServiceWhatsApp(serviceId) {
   const service = state.services.find((item) => item.id === serviceId);
   if (!service) return;
   if (!isServicePriced(service)) {
-    toast("WhatsApp", "Defina o preco antes de enviar a OS ao cliente.", "error");
+    toast("WhatsApp", "Defina o preço antes de enviar a OS ao cliente.", "error");
     return;
   }
   const phone = formatPhoneForWhatsApp(service.client?.phone);
@@ -910,7 +984,23 @@ function sendServiceWhatsApp(serviceId) {
   const message = buildWhatsAppMessage(service);
   const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   window.open(url, "_blank", "noopener");
+  await markServiceSentToClient(serviceId, "whatsapp");
   toast("WhatsApp", "WhatsApp aberto com a mensagem da OS preenchida.");
+}
+
+async function markServiceSentToClient(serviceId, channel) {
+  try {
+    const service = await api(`/api/services/${serviceId}/sent-to-client`, {
+      method: "POST",
+      body: { channel }
+    });
+    upsertService(service);
+    renderServices();
+    renderClientHistory();
+    await loadDashboard();
+  } catch (error) {
+    toast("Envio ao cliente", error.message, "error");
+  }
 }
 
 function selectedPdfOptions() {
@@ -986,24 +1076,24 @@ function openPrintableHtml(html) {
 
 function pdfBox(options, key, label, value) {
   if (!options[key]) return "";
-  return `<div class="box"><strong>${escapeHTML(label)}</strong>${escapeHTML(value || "Nao informado")}</div>`;
+  return `<div class="box"><strong>${escapeHTML(label)}</strong>${escapeHTML(value || "Não informado")}</div>`;
 }
 
 function pdfServicesTable(services, options) {
-  if (!services.length) return `<p class="muted">Nenhum servico encontrado.</p>`;
+  if (!services.length) return `<p class="muted">Nenhum serviço encontrado.</p>`;
   const columns = [
-    ["serviceName", "Servico", (service) => `${service.code} - ${service.title || ""}`],
+    ["serviceName", "Serviço", (service) => `${service.code} - ${service.title || ""}`],
     ["createdAt", "Data", (service) => formatDateTime(service)],
     ["status", "Status", (service) => statusLabels[service.status] || service.status],
-    ["priceStatus", "Precificacao", (service) => priceStatusLabel(service)],
-    ["responsibleEmployee", "Responsavel", (service) => serviceResponsibleNames(service)],
-    ["price", "Valor", (service) => (isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")],
+    ["priceStatus", "Precifica??o", (service) => priceStatusLabel(service)],
+    ["responsibleEmployee", "Responsável", (service) => serviceResponsibleNames(service)],
+    ["price", "Valor", (service) => (isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")],
     ["financeNotes", "Obs. financeira", (service) => service.financeNotes || ""],
-    ["notes", "Observacoes", (service) => service.notes || ""]
+    ["notes", "Observações", (service) => service.notes || ""]
   ].filter(([key]) => options[key]);
 
   if (!columns.length) {
-    columns.push(["serviceName", "Servico", (service) => `${service.code} - ${service.title || ""}`]);
+    columns.push(["serviceName", "Serviço", (service) => `${service.code} - ${service.title || ""}`]);
   }
 
   return `
@@ -1030,13 +1120,13 @@ function filterServicesByPriceOptions(services, options) {
 }
 
 function periodLabel(filters) {
-  const from = filters.dateFrom || "inicio";
+  const from = filters.dateFrom || "início";
   const to = filters.dateTo || "hoje";
-  return `${from} ate ${to}`;
+  return `${from} at? ${to}`;
 }
 
 function buildServicePdfHtml(service, options) {
-  const customerName = service.client?.name || service.customer || "Cliente nao informado";
+  const customerName = service.client?.name || service.customer || "Cliente não informado";
   const allClientServices = service.clientId
     ? clientHistoryServices({ clientId: service.clientId, status: "all", dateFrom: "", dateTo: "" })
     : [];
@@ -1046,16 +1136,16 @@ function buildServicePdfHtml(service, options) {
     <section class="grid">
       ${pdfBox(options, "clientName", "Cliente", customerName)}
       ${pdfBox(options, "phone", "Telefone", service.client?.phone || "")}
-      ${pdfBox(options, "serviceName", "Servico", `${service.code} - ${service.title || ""}`)}
-      ${pdfBox(options, "description", "Descricao", service.notes || "")}
-      ${pdfBox(options, "price", "Valor", isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}
+      ${pdfBox(options, "serviceName", "Serviço", `${service.code} - ${service.title || ""}`)}
+      ${pdfBox(options, "description", "Descrição", service.notes || "")}
+      ${pdfBox(options, "price", "Valor", isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")}
       ${pdfBox(options, "createdAt", "Data de abertura", shortDate(service.createdAt) || formatDateTime(service))}
       ${pdfBox(options, "finishedAt", "Data de finalizacao", serviceFinishedDate(service))}
       ${pdfBox(options, "status", "Status", statusLabels[service.status] || service.status)}
       ${pdfBox(options, "priceStatus", "Status de precificacao", priceStatusLabel(service))}
-      ${pdfBox(options, "responsibleEmployee", "Funcionario responsavel", serviceResponsibleNames(service))}
-      ${pdfBox(options, "notes", "Observacoes", service.notes || "")}
-      ${pdfBox(options, "financeNotes", "Observacoes financeiras", service.financeNotes || "")}
+      ${pdfBox(options, "responsibleEmployee", "Funcionário responsável", serviceResponsibleNames(service))}
+      ${pdfBox(options, "notes", "Observações", service.notes || "")}
+      ${pdfBox(options, "financeNotes", "Observações financeiras", service.financeNotes || "")}
     </section>
     ${
       options.signature
@@ -1066,10 +1156,10 @@ function buildServicePdfHtml(service, options) {
           }</section>`
         : ""
     }
-    ${options.clientHistory ? `<h2>Historico do cliente</h2>${pdfServicesTable(clientServices, options)}` : ""}
-    ${options.totalValue ? `<h2>Total</h2><p><strong>${escapeHTML(formatCurrency(totalValue))}</strong> em ${clientServices.length} servico(s).</p>` : ""}
+    ${options.clientHistory ? `<h2>Histórico do cliente</h2>${pdfServicesTable(clientServices, options)}` : ""}
+    ${options.totalValue ? `<h2>Total</h2><p><strong>${escapeHTML(formatCurrency(totalValue))}</strong> em ${clientServices.length} serviço(s).</p>` : ""}
   `;
-  return printShell(`Ordem de Servico ${service.code}`, customerName, content);
+  return printShell(`Ordem de Serviço ${service.code}`, customerName, content);
 }
 
 function buildClientPdfHtml(filters, options) {
@@ -1080,13 +1170,13 @@ function buildClientPdfHtml(filters, options) {
     <section class="grid">
       ${pdfBox(options, "clientName", "Cliente", client?.name || "")}
       ${pdfBox(options, "phone", "Telefone", client?.phone || "")}
-      ${pdfBox(options, "clientNotes", "Observacoes gerais", client?.notes || "")}
-      ${pdfBox(options, "period", "Periodo", periodLabel(filters))}
+      ${pdfBox(options, "clientNotes", "Observações gerais", client?.notes || "")}
+      ${pdfBox(options, "period", "Período", periodLabel(filters))}
     </section>
-    ${options.clientHistory ? `<h2>Servicos do cliente</h2>${pdfServicesTable(services, options)}` : ""}
-    ${options.totalValue ? `<h2>Total</h2><p><strong>${escapeHTML(formatCurrency(totalValue))}</strong> em ${services.length} servico(s).</p>` : ""}
+    ${options.clientHistory ? `<h2>Serviços do cliente</h2>${pdfServicesTable(services, options)}` : ""}
+    ${options.totalValue ? `<h2>Total</h2><p><strong>${escapeHTML(formatCurrency(totalValue))}</strong> em ${services.length} serviço(s).</p>` : ""}
   `;
-  return printShell(`Relatorio do cliente ${client?.name || ""}`, periodLabel(filters), content);
+  return printShell(`Relatório do cliente ${client?.name || ""}`, periodLabel(filters), content);
 }
 
 async function downloadClientReportPdf(filters, options) {
@@ -1117,14 +1207,14 @@ async function downloadServiceReportPdf(serviceId, options) {
 function openPdfOptions(type, serviceId = "") {
   const fields = pdfFieldsByType[type] || [];
   if (type === "client" && !clientHistoryFilters().clientId) {
-    toast("PDF", "Selecione um cliente no historico para gerar o relatorio.", "error");
+    toast("PDF", "Selecione um cliente no histórico para gerar o relatório.", "error");
     return;
   }
   if (type === "service" && !state.services.some((service) => service.id === serviceId)) return;
 
   state.pdfRequest = { type, serviceId };
-  $("#pdfOptionsTitle").textContent = type === "client" ? "Gerar relatorio do cliente" : "Gerar PDF da OS";
-  $("#pdfOptionsSubtitle").textContent = "Escolha as informacoes que vao aparecer no PDF.";
+  $("#pdfOptionsTitle").textContent = type === "client" ? "Gerar relatório do cliente" : "Gerar PDF da OS";
+  $("#pdfOptionsSubtitle").textContent = "Escolha as informações que vão aparecer no PDF.";
   $("#pdfOptionsFields").innerHTML = fields
     .map(
       ([id, label, checked]) => `
@@ -1153,7 +1243,7 @@ function openPriceModal(serviceId) {
   form.elements.serviceId.value = serviceId;
   form.elements.price.value = isServicePriced(service) ? formatCurrency(servicePrice(service)) : "";
   form.elements.financeNotes.value = service.financeNotes || "";
-  $("#priceModalTitle").textContent = isServicePriced(service) ? "Alterar preco" : "Adicionar preco";
+  $("#priceModalTitle").textContent = isServicePriced(service) ? "Alterar preço" : "Adicionar preço";
   $("#priceModalSubtitle").textContent = `${service.code} - ${service.title || ""}`;
   $("#priceModal").classList.remove("hidden");
   refreshIcons();
@@ -1184,7 +1274,7 @@ async function handlePriceSubmit(event) {
     renderClientHistory();
     await loadDashboard();
     closePriceModal();
-    toast("Preco", "Preco do servico salvo.");
+    toast("Preço", "Preço do serviço salvo.");
     try {
       const fileName = await downloadServiceReportPdf(service.id, defaultServicePdfOptions());
       toast("PDF", `PDF da OS baixado: ${fileName}.`);
@@ -1192,7 +1282,7 @@ async function handlePriceSubmit(event) {
       toast("PDF", downloadError.message, "error");
     }
   } catch (error) {
-    toast("Preco", error.message, "error");
+    toast("Preço", error.message, "error");
   }
 }
 
@@ -1200,7 +1290,7 @@ async function generateSelectedPdf() {
   if (!state.pdfRequest) return;
   const options = selectedPdfOptions();
   if (!Object.values(options).some(Boolean)) {
-    toast("PDF", "Selecione pelo menos uma informacao para o PDF.", "error");
+    toast("PDF", "Selecione pelo menos uma informação para o PDF.", "error");
     return;
   }
 
@@ -1236,22 +1326,25 @@ function serviceCard(service) {
   const customerName = service.client?.name || service.customer;
   const canAdminAct = !["done", "cancelled"].includes(service.status);
   const canReport = service.status === "done" && isServicePriced(service);
-  const needsPrice = service.status === "done" && !isServicePriced(service);
+  const needsPrice = isPendingPricing(service);
+  const badgeClass = workflowBadgeClass(service);
+  const badgeLabel = workflowStatusLabel(service);
 
   return `
-    <article class="service-card">
+    <article class="service-card ${needsPrice ? "service-card-pending" : ""}">
       <div class="service-card-header">
         <div>
           <h3>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</h3>
           <div class="meta">
             <span>${formatDateTime(service)}</span>
             <span>${escapeHTML(service.location)}</span>
-            <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
+            <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
             <span>${escapeHTML(employeeNames || "Sem funcionário")}</span>
           </div>
         </div>
-        <span class="badge ${escapeHTML(service.status)}">${escapeHTML(statusLabels[service.status] || service.status)}</span>
+        <span class="badge ${escapeHTML(badgeClass)}">${escapeHTML(badgeLabel)}</span>
       </div>
+      ${needsPrice ? `<div class="queue-badge"><i data-lucide="sparkles"></i>Novo serviço aguardando preço</div>` : ""}
       <p class="notes">${escapeHTML(customerName ? `Cliente: ${customerName}` : "")}</p>
       <p class="notes">${escapeHTML(service.address)}</p>
       ${teamBlock(service)}
@@ -1264,7 +1357,7 @@ function serviceCard(service) {
       ${
         needsPrice
           ? `<div class="row-actions">
-              <button class="primary-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Adicionar preÃ§o</button>
+              <button class="primary-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Adicionar preço</button>
             </div>`
           : ""
       }
@@ -1291,12 +1384,14 @@ function serviceCard(service) {
 
 function serviceTrackingCard(service) {
   const employeeNames = (service.employees || []).map((employee) => employee.name).join(", ");
-  const customerName = service.client?.name || service.customer || "Cliente nao informado";
+  const customerName = service.client?.name || service.customer || "Cliente não informado";
   const teamName = service.team?.name ? `Equipe: ${service.team.name}` : "";
   const materialCount = (service.materials || []).length;
+  const badgeClass = workflowBadgeClass(service);
+  const badgeLabel = workflowStatusLabel(service);
   const timestamp =
     service.status === "in_progress"
-      ? `Inicio: ${shortDate(service.startedAt)}`
+      ? `Início: ${shortDate(service.startedAt)}`
       : service.status === "done"
         ? `Finalizado: ${shortDate(service.finishedAt)}`
         : service.status === "cancelled"
@@ -1310,13 +1405,13 @@ function serviceTrackingCard(service) {
           <strong>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</strong>
           <span>${escapeHTML(customerName)}</span>
         </div>
-        <span class="badge ${escapeHTML(service.status)}">${escapeHTML(statusLabels[service.status] || service.status)}</span>
+        <span class="badge ${escapeHTML(badgeClass)}">${escapeHTML(badgeLabel)}</span>
       </div>
       <div class="tracking-card-meta">
         <span><i data-lucide="clock"></i>${escapeHTML(timestamp)}</span>
         <span><i data-lucide="map-pin"></i>${escapeHTML(service.location || "Sem local")}</span>
-        <span><i data-lucide="users-round"></i>${escapeHTML(teamName || employeeNames || "Sem responsavel")}</span>
-        <span><i data-lucide="dollar-sign"></i>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
+        <span><i data-lucide="users-round"></i>${escapeHTML(teamName || employeeNames || "Sem responsável")}</span>
+        <span><i data-lucide="dollar-sign"></i>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
         <span><i data-lucide="package"></i>${materialCount} material(is)</span>
       </div>
     </article>
@@ -1326,8 +1421,39 @@ function serviceTrackingCard(service) {
 function sortTrackingServices(status, services) {
   const sorted = services
     .slice()
-    .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
-  return ["done", "cancelled"].includes(status) ? sorted.reverse() : sorted;
+    .sort((a, b) => serviceTimestamp(b) - serviceTimestamp(a));
+  return sorted;
+}
+
+function serviceTimestamp(service) {
+  const value =
+    service.sentToClientAt ||
+    service.pricedAt ||
+    service.finishedAt ||
+    service.createdAt ||
+    `${service.date || ""}T${service.time || "00:00"}:00`;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function serviceMatchesTrackingStatus(service, status) {
+  if (status === "pending_price") return isPendingPricing(service);
+  if (status === "priced") return isServicePriced(service) && !isSentToClient(service);
+  if (status === "sent_client") return isSentToClient(service);
+  return service.status === status;
+}
+
+function serviceMatchesListFilter(service, filter) {
+  if (filter === "pending_price") return isPendingPricing(service);
+  if (filter === "priced") return isServicePriced(service) && !isSentToClient(service);
+  if (filter === "sent_client") return isSentToClient(service);
+  return filter === "all" || service.status === filter;
+}
+
+function compareAdminServices(a, b) {
+  const pendingDiff = Number(isPendingPricing(b)) - Number(isPendingPricing(a));
+  if (pendingDiff) return pendingDiff;
+  return serviceTimestamp(b) - serviceTimestamp(a);
 }
 
 function renderTracking() {
@@ -1338,7 +1464,7 @@ function renderTracking() {
   const groups = Object.fromEntries(
     trackingStatuses.map((status) => [
       status.id,
-      sortTrackingServices(status.id, state.services.filter((service) => service.status === status.id))
+      sortTrackingServices(status.id, state.services.filter((service) => serviceMatchesTrackingStatus(service, status.id)))
     ])
   );
 
@@ -1360,7 +1486,7 @@ function renderTracking() {
           <div class="tracking-column-title">
             <div>
               <h2>${escapeHTML(status.title)}</h2>
-              <span>${groups[status.id].length} servico(s)</span>
+              <span>${groups[status.id].length} serviço(s)</span>
             </div>
             <span class="badge ${escapeHTML(status.id)}">${groups[status.id].length}</span>
           </div>
@@ -1368,7 +1494,7 @@ function renderTracking() {
             ${
               groups[status.id].length
                 ? groups[status.id].map(serviceTrackingCard).join("")
-                : `<div class="empty">Nenhum servico ${escapeHTML(status.title.toLowerCase())}.</div>`
+                : `<div class="empty">Nenhum serviço ${escapeHTML(status.title.toLowerCase())}.</div>`
             }
           </div>
         </section>
@@ -1384,19 +1510,20 @@ function renderServices() {
   const dateFrom = $("#dateFromFilter").value;
   const dateTo = $("#dateToFilter").value;
   const services = state.services
-    .filter((service) => filter === "all" || service.status === filter)
+    .filter((service) => serviceMatchesListFilter(service, filter))
     .filter((service) => !clientId || service.clientId === clientId)
     .filter((service) => !teamId || service.teamId === teamId)
     .filter((service) => !dateFrom || service.date >= dateFrom)
     .filter((service) => !dateTo || service.date <= dateTo)
     .slice()
-    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    .sort(compareAdminServices);
 
   $("#serviceList").innerHTML = services.length
     ? services.map(serviceCard).join("")
     : `<div class="empty">Nenhum serviço encontrado.</div>`;
   renderPendingPricing();
   renderTracking();
+  renderPricingAlerts();
   refreshIcons();
 }
 
@@ -1412,11 +1539,11 @@ function clientHistoryFilters() {
 function clientHistoryServices(filters = clientHistoryFilters()) {
   return state.services
     .filter((service) => !filters.clientId || service.clientId === filters.clientId)
-    .filter((service) => filters.status === "all" || service.status === filters.status)
+    .filter((service) => serviceMatchesListFilter(service, filters.status))
     .filter((service) => !filters.dateFrom || service.date >= filters.dateFrom)
     .filter((service) => !filters.dateTo || service.date <= filters.dateTo)
     .slice()
-    .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+    .sort(compareAdminServices);
 }
 
 function sumServiceValues(services) {
@@ -1428,14 +1555,14 @@ function serviceResponsibleNames(service) {
     const employee = (service.employees || []).find((item) => item.id === service.finishedBy);
     if (employee) return employee.name;
   }
-  return (service.employees || []).map((employee) => employee.name).join(", ") || "Sem funcionario";
+  return (service.employees || []).map((employee) => employee.name).join(", ") || "Sem funcionário";
 }
 
 function pendingPricingServices() {
   return state.services
-    .filter((service) => service.status === "done" && !isServicePriced(service))
+    .filter(isPendingPricing)
     .slice()
-    .sort((a, b) => String(b.finishedAt || b.updatedAt || "").localeCompare(String(a.finishedAt || a.updatedAt || "")));
+    .sort(compareAdminServices);
 }
 
 function renderPendingPricing() {
@@ -1445,23 +1572,62 @@ function renderPendingPricing() {
   list.innerHTML = services.length
     ? services
         .map((service) => {
-          const customerName = service.client?.name || service.customer || "Cliente nao informado";
+          const customerName = service.client?.name || service.customer || "Cliente não informado";
+          const responsible = serviceResponsibleNames(service);
           return `
             <div class="employee-row pending-price-row">
               <div>
-                <strong>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</strong>
-                <span>${escapeHTML(customerName)} - finalizado em ${escapeHTML(serviceFinishedDate(service) || "data nao informada")}</span>
-                <span>${escapeHTML(serviceResponsibleNames(service))} - ${escapeHTML(priceStatusLabel(service))}</span>
+                <strong><span class="queue-badge inline">Novo serviço aguardando preço</span>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</strong>
+                <span>Cliente: ${escapeHTML(customerName)}</span>
+                <span>Local/equipamento: ${escapeHTML(service.location || service.address || "Não informado")}</span>
+                <span>Descrição: ${escapeHTML(service.notes || service.title || "Não informada")}</span>
+                <span>Funcionário responsável: ${escapeHTML(responsible)}</span>
+                <span>Data/hora: ${escapeHTML(serviceFinishedDate(service) || formatDateTime(service) || "Não informada")}</span>
               </div>
               <div class="row-actions">
-                <button class="primary-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Adicionar preÃ§o</button>
+                <button class="primary-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Adicionar preço</button>
               </div>
             </div>
           `;
         })
         .join("")
-    : `<div class="empty">Nenhum servico aguardando preco.</div>`;
+    : `<div class="empty">Nenhum serviço aguardando preço.</div>`;
   refreshIcons();
+}
+
+function clientHistoryRow(service) {
+  const customerName = service.client?.name || service.customer || "Cliente não informado";
+  const priced = isServicePriced(service);
+  return `
+    <div class="employee-row history-row ${priced ? "history-priced" : "history-pending"}">
+      <div>
+        <strong>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</strong>
+        <span>${escapeHTML(customerName)} - ${escapeHTML(formatDateTime(service))}</span>
+        <span>${escapeHTML(workflowStatusLabel(service))} - ${escapeHTML(priced ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
+      </div>
+      <div class="row-actions">
+        ${
+          priced
+            ? `<button class="ghost-button" type="button" data-action="history-open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>PDF da OS</button>`
+            : `<span class="badge pending_price">Aguardando preço</span>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function historyGroup(title, services) {
+  return `
+    <section class="history-group">
+      <div class="history-group-title">
+        <h3>${escapeHTML(title)}</h3>
+        <span>${services.length} serviço(s)</span>
+      </div>
+      <div class="list">
+        ${services.length ? services.map(clientHistoryRow).join("") : `<div class="empty">Nenhum serviço nesta categoria.</div>`}
+      </div>
+    </section>
+  `;
 }
 
 function renderClientHistory() {
@@ -1472,6 +1638,8 @@ function renderClientHistory() {
   const filters = clientHistoryFilters();
   const client = filters.clientId ? state.clients.find((item) => item.id === filters.clientId) : null;
   const services = clientHistoryServices(filters);
+  const pricedServices = services.filter(isServicePriced);
+  const waitingServices = services.filter((service) => !isServicePriced(service));
   const totalValue = sumServiceValues(services);
 
   summary.innerHTML = `
@@ -1480,8 +1648,12 @@ function renderClientHistory() {
       <strong>${escapeHTML(client?.name || "Todos os clientes")}</strong>
     </section>
     <section class="history-stat">
-      <span>Total de servicos</span>
+      <span>Total de serviços</span>
       <strong>${services.length}</strong>
+    </section>
+    <section class="history-stat">
+      <span>Aguardando preço</span>
+      <strong>${waitingServices.length}</strong>
     </section>
     <section class="history-stat">
       <span>Soma dos valores</span>
@@ -1490,24 +1662,8 @@ function renderClientHistory() {
   `;
 
   list.innerHTML = services.length
-    ? services
-        .map((service) => {
-          const customerName = service.client?.name || service.customer || "Cliente nao informado";
-          return `
-            <div class="employee-row history-row">
-              <div>
-                <strong>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</strong>
-                <span>${escapeHTML(customerName)} - ${escapeHTML(formatDateTime(service))}</span>
-                <span>${escapeHTML(statusLabels[service.status] || service.status)} - ${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco")}</span>
-              </div>
-              <div class="row-actions">
-                <button class="ghost-button" type="button" data-action="history-open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>PDF da OS</button>
-              </div>
-            </div>
-          `;
-        })
-        .join("")
-    : `<div class="empty">Nenhum servico encontrado para os filtros.</div>`;
+    ? `${historyGroup("Serviços precificados e enviados", pricedServices)}${historyGroup("Serviços aguardando preço", waitingServices)}`
+    : `<div class="empty">Nenhum serviço encontrado para os filtros.</div>`;
   refreshIcons();
 }
 
@@ -1642,7 +1798,7 @@ function renderClients() {
                 ${client.address ? `<span>${escapeHTML(client.address)}</span>` : ""}
               </div>
               <div class="row-actions">
-                <button class="ghost-button" type="button" data-action="client-history" data-id="${escapeHTML(client.id)}"><i data-lucide="history"></i>Historico</button>
+                <button class="ghost-button" type="button" data-action="client-history" data-id="${escapeHTML(client.id)}"><i data-lucide="history"></i>Histórico</button>
                 <button class="ghost-button" type="button" data-action="edit-client" data-id="${escapeHTML(client.id)}"><i data-lucide="pencil"></i>Editar</button>
                 <button class="${client.active ? "danger-button" : "primary-button"}" type="button" data-action="toggle-client" data-id="${escapeHTML(client.id)}" data-active="${client.active}">
                   <i data-lucide="${client.active ? "power-off" : "power"}"></i>${client.active ? "Desativar" : "Ativar"}
@@ -1928,7 +2084,7 @@ async function deleteTeam(teamId) {
     await loadTeams();
     await loadServices();
     await loadDashboard();
-    toast("Equipes", "Equipe excluida.");
+    toast("Equipes", "Equipe excluída.");
   } catch (error) {
     toast("Equipes", error.message, "error");
   }
@@ -2001,9 +2157,9 @@ async function deleteEmployee(employeeId) {
     await loadEmployees();
     await loadTeams();
     await loadDashboard();
-    toast("FuncionÃ¡rio", "FuncionÃ¡rio excluido.");
+    toast("Funcionário", "Funcionário excluído.");
   } catch (error) {
-    toast("FuncionÃ¡rio", error.message, "error");
+    toast("Funcionário", error.message, "error");
   }
 }
 
@@ -2053,6 +2209,11 @@ function bindEvents() {
   });
 
   $("#notificationButton").addEventListener("click", requestNotifications);
+  $("#pendingPricingAlert")?.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-alert-action='open-pricing']")) return;
+    switchTab("services");
+    document.querySelector(".pending-pricing-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   $("#logoutButton").addEventListener("click", logout);
   $("#serviceForm").addEventListener("submit", handleServiceSubmit);
   $("#clearServiceFormButton").addEventListener("click", clearServiceForm);
