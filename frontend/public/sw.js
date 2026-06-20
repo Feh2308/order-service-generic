@@ -1,14 +1,17 @@
-const CACHE_NAME = "eg-services-v10";
+const APP_VERSION = "20260620-ordem-cache-fix";
+const CACHE_NAME = `eg-services-${APP_VERSION}`;
+const versioned = (path) => `${path}?v=${APP_VERSION}`;
 const ASSETS = [
   "/",
   "/index.html",
   "/admin/",
   "/funcionario/",
-  "/assets/styles.css",
-  "/assets/runtime.js",
-  "/assets/icons.js",
-  "/assets/admin.js",
-  "/assets/employee.js",
+  versioned("/env.js"),
+  versioned("/assets/styles.css"),
+  versioned("/assets/runtime.js"),
+  versioned("/assets/icons.js"),
+  versioned("/assets/admin.js"),
+  versioned("/assets/employee.js"),
   "/assets/logo.svg",
   "/vendor/lucide/lucide.min.js",
   "/vendor/socket.io/socket.io.min.js",
@@ -16,6 +19,7 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
 });
 
@@ -23,7 +27,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-    )
+    ).then(() => self.clients.claim())
   );
 });
 
@@ -33,7 +37,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   event.respondWith(
-    fetch(request)
+    fetch(new Request(request, { cache: "no-store" }))
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
