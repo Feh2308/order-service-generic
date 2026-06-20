@@ -17,6 +17,7 @@ backend/data/*.json
 backend/data/*.json.*
 backend/uploads/
 backend/storage/
+backups/
 
 npm-debug.log*
 *.log
