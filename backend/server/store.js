@@ -953,13 +953,18 @@ function normalizeSignature(signature, service) {
 async function finishService(serviceId, employeeId, payload = {}) {
   const service = db.services.find((item) => item.id === serviceId);
   if (!service) return null;
-  if (!service.employeeIds.includes(employeeId)) return { forbidden: true };
   const team = service.teamId ? db.teams.find((item) => item.id === service.teamId) : null;
-  if (team && team.leaderId !== employeeId) return { notTeamLeader: true, service: publicService(service) };
+  const isAssignedEmployee = service.employeeIds.includes(employeeId);
+  const isTeamMember = Boolean(team?.employeeIds?.includes(employeeId));
+  if (!isAssignedEmployee && !isTeamMember) return { forbidden: true };
   if (service.status !== "in_progress") return { invalidStatus: true, service: publicService(service) };
 
-  service.status = "done";
-  service.finishedAt = now();
+  const previousStatus = service.status;
+  const nextStatus = "done";
+  const finishedAt = now();
+
+  service.status = nextStatus;
+  service.finishedAt = finishedAt;
   service.finishedBy = employeeId;
   service.finalLocation = normalizeLocation(payload.finalLocation);
   service.clientSignature = normalizeSignature(payload.signature, service);
@@ -974,13 +979,17 @@ async function finishService(serviceId, employeeId, payload = {}) {
     service.pricedAt = null;
     service.pricedBy = null;
   }
-  service.updatedAt = now();
+  service.updatedAt = finishedAt;
   await save(db);
 
   const employee = db.employees.find((item) => item.id === employeeId);
   await addEvent("service.finished", `${employee?.name || "Funcionário"} finalizou ${service.code}.`, {
     serviceId: service.id,
-    employeeId
+    employeeId,
+    teamId: service.teamId || null,
+    previousStatus,
+    nextStatus,
+    finishedAt
   });
   return publicService(service);
 }

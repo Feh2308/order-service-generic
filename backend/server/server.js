@@ -571,7 +571,6 @@ app.post("/api/services/:id/finish", auth("employee"), asyncRoute(async (req, re
   const result = await store.finishService(req.params.id, req.user.id, req.body || {});
   if (!result) return res.status(404).json({ error: "Serviço não encontrado." });
   if (result.forbidden) return res.status(403).json({ error: "Serviço não atribuído a este funcionário." });
-  if (result.notTeamLeader) return res.status(403).json({ error: "Apenas o líder da equipe pode finalizar este serviço.", service: result.service });
   if (result.invalidStatus) return res.status(409).json({ error: "Serviço precisa estar iniciado antes de finalizar.", service: result.service });
 
   broadcastService("service:updated", result, `${req.user.name} finalizou ${result.code}.`);
