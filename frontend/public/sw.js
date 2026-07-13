@@ -1,4 +1,4 @@
-const APP_VERSION = "20260620-ordem-cache-fix";
+const APP_VERSION = "20260713-optional-proof-single-photo";
 const CACHE_NAME = `eg-services-${APP_VERSION}`;
 const versioned = (path) => `${path}?v=${APP_VERSION}`;
 const ASSETS = [
@@ -7,7 +7,8 @@ const ASSETS = [
   "/admin/",
   "/funcionario/",
   versioned("/env.js"),
-  versioned("/assets/styles.css"),
+  versioned("/assets/Admin.css"),
+  versioned("/assets/Funcionario.css"),
   versioned("/assets/runtime.js"),
   versioned("/assets/icons.js"),
   versioned("/assets/admin.js"),
@@ -33,9 +34,25 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  if (request.method !== "GET" || request.url.includes("/api/") || request.url.includes("/socket.io/")) {
+
+  if (request.url.includes("/socket.io/")) return;
+
+  if (request.method === "GET" && request.url.includes("/api/")) {
+    event.respondWith(
+      fetch(request)
+        .then(async (response) => {
+          const cache = await caches.open(CACHE_NAME);
+          cache.put(request, response.clone());
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match(request);
+          return cached || new Response(JSON.stringify([]));
+        })
+    );
     return;
   }
+
   event.respondWith(
     fetch(new Request(request, { cache: "no-store" }))
       .then((response) => {

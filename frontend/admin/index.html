@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#18332f">
+    <meta name="theme-color" content="#2563eb">
     <title>Admin | EG Automações Services</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/assets/styles.css?v=20260620-ordem-cache-fix">
+    <link rel="stylesheet" href="/assets/Admin.css?v=20260711-cancelled-menu-final">
   </head>
   <body>
     <main id="loginView" class="login-shell">
@@ -44,46 +44,209 @@
     </main>
 
     <main id="appView" class="app-shell hidden">
-      <aside class="sidebar">
+      <aside class="sidebar" id="sidebar" aria-label="Navegacao administrativa">
+
+    <div class="sidebar-header">
+
         <div class="brand">
-          <img src="/assets/logo.svg" alt="EG Automações Services">
-          <span>
-            <strong class="brand-title">EG Automações Services</strong>
-            <small class="brand-subtitle">Admin</small>
-          </span>
+            <img src="/assets/logo.svg" alt="EG Automações Services">
+
+            <span>
+                <strong class="brand-title">
+                    EG Automações Services
+                </strong>
+
+                <small class="brand-subtitle">
+                    Admin
+                </small>
+            </span>
+
         </div>
-        <nav class="nav" aria-label="Areas do admin">
-          <button class="nav-button active" type="button" data-tab="dashboard"><span class="nav-icon"><i data-lucide="layout-dashboard"></i></span>Painel</button>
-          <button class="nav-button" type="button" data-tab="clients"><span class="nav-icon"><i data-lucide="building-2"></i></span>Clientes</button>
-          <button class="nav-button" type="button" data-tab="materials"><span class="nav-icon"><i data-lucide="package-search"></i></span>Materiais</button>
-          <button class="nav-button" type="button" data-tab="teams"><span class="nav-icon"><i data-lucide="users-round"></i></span>Equipes</button>
-          <button class="nav-button" type="button" data-tab="tracking"><span class="nav-icon"><i data-lucide="kanban"></i></span>Acompanhamento</button>
-          <button class="nav-button" type="button" data-tab="services"><span class="nav-icon"><i data-lucide="clipboard-list"></i></span>Serviços<span id="pendingPriceNavBadge" class="nav-badge hidden">0</span></button>
-          <button class="nav-button" type="button" data-tab="employees"><span class="nav-icon"><i data-lucide="id-card"></i></span>Funcionários</button>
-          <button class="nav-button" type="button" data-tab="settings"><span class="nav-icon"><i data-lucide="settings"></i></span>Configurações</button>
-        </nav>
-        <div class="sidebar-footer">
-          <span id="adminName">Administrador</span>
-          <button id="logoutButton" class="ghost-button" type="button"><i data-lucide="log-out"></i>Sair</button>
-        </div>
-      </aside>
+
+    </div>
+
+    <nav class="nav" aria-label="Areas do admin">
+
+        <button class="nav-button active" type="button" data-tab="dashboard">
+            <span class="nav-icon">
+                <i data-lucide="layout-dashboard"></i>
+            </span>
+            Painel
+        </button>
+
+        <button class="nav-button" type="button" data-tab="clients">
+            <span class="nav-icon">
+                <i data-lucide="building-2"></i>
+            </span>
+            Clientes
+        </button>
+
+        <button class="nav-button" type="button" data-tab="materials">
+            <span class="nav-icon">
+                <i data-lucide="package-search"></i>
+            </span>
+            Materiais
+        </button>
+
+        <button class="nav-button" type="button" data-tab="teams">
+            <span class="nav-icon">
+                <i data-lucide="users-round"></i>
+            </span>
+            Equipes
+        </button>
+
+        <button class="nav-button" type="button" data-tab="tracking">
+            <span class="nav-icon">
+                <i data-lucide="kanban"></i>
+            </span>
+            Acompanhamento
+        </button>
+
+        <button class="nav-button" type="button" data-tab="services">
+            <span class="nav-icon">
+                <i data-lucide="clipboard-list"></i>
+            </span>
+
+            Serviços
+
+            <span id="pendingPriceNavBadge"
+                  class="nav-badge hidden">
+                0
+            </span>
+
+        </button>
+
+        <button class="nav-button" type="button" data-tab="cancelled">
+            <span class="nav-icon">
+                <i data-lucide="archive-x"></i>
+            </span>
+            Cancelados
+        </button>
+
+        <button class="nav-button" type="button" data-tab="employees">
+            <span class="nav-icon">
+                <i data-lucide="id-card"></i>
+            </span>
+            Funcionários
+        </button>
+
+        <button class="nav-button" type="button" data-tab="settings">
+            <span class="nav-icon">
+                <i data-lucide="settings"></i>
+            </span>
+            Configurações
+        </button>
+
+    </nav>
+
+    <div class="sidebar-footer">
+
+        <span id="adminName">
+            Administrador
+        </span>
+
+        <button
+            id="logoutButton"
+            class="ghost-button"
+            type="button">
+
+            <i data-lucide="log-out"></i>
+
+            Sair
+
+        </button>
+
+    </div>
+
+</aside>
+
+<div id="drawerOverlay" class="drawer-overlay"></div>
 
       <section class="content">
         <header class="topbar">
-          <div>
-            <h1 id="pageTitle">Painel</h1>
-            <p id="pageSubtitle">Visão geral dos serviços em andamento.</p>
-          </div>
-          <div class="topbar-actions">
-            <button id="notificationButton" class="ghost-button" type="button"><i data-lucide="bell"></i>Notificações</button>
-            <a class="ghost-button" href="/funcionario/" target="_blank" rel="noreferrer"><i data-lucide="smartphone"></i>App funcionário</a>
-          </div>
-        </header>
+
+    <div class="topbar-left">
+
+        <button id="drawerToggle" class="menu-toggle" type="button" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false">
+            <i data-lucide="menu"></i>
+        </button>
+
+        <div class="page-title">
+            <h1 id="pageTitle">Painel Administrativo</h1>
+            <span id="pageSubtitle">Bem-vindo novamente.</span>
+        </div>
+
+    </div>
+
+    <div class="topbar-right">
+
+        <div class="search-box">
+
+            <i data-lucide="search"></i>
+
+            <input
+                type="text"
+                placeholder="Pesquisar..."
+            >
+
+        </div>
+
+        <button id="notificationButton" class="action-button" type="button" aria-label="Ativar notificacoes">
+
+            <i data-lucide="bell"></i>
+
+            <span class="dot"></span>
+
+        </button>
+
+        <div class="profile">
+
+            <div class="profile-avatar">
+                A
+            </div>
+
+            <div class="profile-info">
+
+                <strong id="adminProfileName">
+                    Administrador
+                </strong>
+
+                <span>
+                    Online
+                </span>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</header>
 
         <section id="dashboardTab" class="tab-view">
           <div id="pendingPricingAlert" class="pending-pricing-alert hidden"></div>
           <div id="statsGrid" class="grid dashboard-grid"></div>
-          <div class="panel" style="margin-top: 16px;">
+          <div class="grid dashboard-lists">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Serviços recentes</h2>
+                  <p>Ordens com atualização mais recente.</p>
+                </div>
+              </div>
+              <div id="recentServicesList" class="panel-body list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Últimos serviços criados</h2>
+                  <p>Novas OS lançadas para a equipe.</p>
+                </div>
+              </div>
+              <div id="latestServicesList" class="panel-body list"></div>
+            </section>
+          </div>
+          <div class="panel activity-panel">
             <div class="panel-header">
               <div>
                 <h2>Atividade recente</h2>
@@ -286,6 +449,10 @@
         </section>
 
         <section id="servicesTab" class="tab-view hidden">
+          <div class="page-actions">
+            <button id="openServiceFormButton" class="primary-button" type="button"><i data-lucide="plus"></i>Novo serviço</button>
+          </div>
+
           <section class="panel pending-pricing-panel">
             <div class="panel-header">
               <div>
@@ -296,8 +463,8 @@
             <div id="pendingPricingList" class="panel-body list"></div>
           </section>
 
-          <div class="grid two-column">
-            <section class="panel">
+          <div class="grid two-column services-workspace">
+            <section id="serviceFormPanel" class="panel collapsible-form-panel hidden">
               <div class="panel-header">
                 <div>
                   <h2 id="serviceFormTitle">Novo serviço</h2>
@@ -361,18 +528,30 @@
                 <div class="field full form-actions">
                   <button id="submitServiceButton" class="primary-button" type="submit"><i data-lucide="send"></i>Enviar serviço</button>
                   <button id="clearServiceFormButton" class="ghost-button" type="button"><i data-lucide="eraser"></i>Limpar</button>
+                  <button id="closeServiceFormButton" class="ghost-button" type="button"><i data-lucide="x"></i>Fechar</button>
                 </div>
               </form>
             </section>
 
-            <section class="panel">
+            <section class="panel services-list-panel">
               <div class="panel-header">
                 <div>
                   <h2>Serviços</h2>
-                  <p>Filtre por cliente, período e status para consultar o histórico.</p>
+                  <p>Filtre por cliente, equipe ou período. Use os botões de status acima para navegar rapidamente.</p>
                 </div>
               </div>
               <div class="panel-body filter-grid">
+                <div id="serviceQuickFilters" class="quick-filter-bar" role="group" aria-label="Filtros rápidos de status">
+                  <button class="quick-filter-button active" type="button" data-filter="all">Todos</button>
+                  <button class="quick-filter-button" type="button" data-filter="scheduled">Agendados</button>
+                  <button class="quick-filter-button" type="button" data-filter="confirmed">Confirmados</button>
+                  <button class="quick-filter-button" type="button" data-filter="in_progress">Em andamento</button>
+                  <button class="quick-filter-button" type="button" data-filter="done">Finalizados</button>
+                </div>
+                <label class="field search-field">
+                  <span>Busca rápida</span>
+                  <input id="serviceSearchInput" class="input" type="search" placeholder="Cliente, equipamento, OS ou telefone">
+                </label>
                 <label class="field">
                   <span>Cliente</span>
                   <select id="clientFilter" class="input">
@@ -393,11 +572,12 @@
                   <span>Até</span>
                   <input id="dateToFilter" class="input" type="date">
                 </label>
-                <label class="field">
+                <label class="field hidden">
                   <span>Status</span>
                   <select id="statusFilter" class="input" aria-label="Filtrar status">
                     <option value="all">Todos</option>
                     <option value="scheduled">Agendados</option>
+                    <option value="confirmed">Confirmados</option>
                     <option value="in_progress">Iniciados</option>
                     <option value="pending_price">Aguardando preço</option>
                     <option value="priced">Precificados</option>
@@ -413,9 +593,26 @@
           </div>
         </section>
 
+        <section id="cancelledTab" class="tab-view hidden">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Serviços cancelados</h2>
+                <p>OS canceladas ficam fora da lista principal e só aparecem aqui.</p>
+              </div>
+              <button id="clearCancelledServicesButton" class="danger-button" type="button"><i data-lucide="trash-2"></i>Limpar todos</button>
+            </div>
+            <div id="cancelledServiceList" class="panel-body list"></div>
+          </section>
+        </section>
+
         <section id="employeesTab" class="tab-view hidden">
-          <div class="grid two-column">
-            <section class="panel">
+          <div class="page-actions">
+            <button id="openEmployeeFormButton" class="primary-button" type="button"><i data-lucide="user-plus"></i>Novo funcionário</button>
+          </div>
+
+          <div class="grid two-column employees-workspace">
+            <section id="employeeFormPanel" class="panel collapsible-form-panel hidden">
               <div class="panel-header">
                 <div>
                   <h2>Novo funcionário</h2>
@@ -435,13 +632,14 @@
                   <span>PIN</span>
                   <input class="input" name="pin" inputmode="numeric" minlength="4" placeholder="Ex: 2468" required>
                 </label>
-                <div class="field full">
+                <div class="field full form-actions">
                   <button class="primary-button" type="submit"><i data-lucide="user-plus"></i>Cadastrar funcionário</button>
+                  <button id="closeEmployeeFormButton" class="ghost-button" type="button"><i data-lucide="x"></i>Fechar</button>
                 </div>
               </form>
             </section>
 
-            <section class="panel">
+            <section class="panel employees-list-panel">
               <div class="panel-header">
                 <div>
                   <h2>Equipe</h2>
@@ -560,6 +758,6 @@
     <script type="module" src="/env.js?v=20260620-ordem-cache-fix"></script>
     <script type="module" src="/assets/runtime.js?v=20260620-ordem-cache-fix"></script>
     <script type="module" src="/assets/icons.js?v=20260620-ordem-cache-fix"></script>
-    <script type="module" src="/assets/admin.js?v=20260620-ordem-cache-fix"></script>
+    <script type="module" src="/assets/admin.js?v=20260711-cancelled-menu-final"></script>
   </body>
 </html>

@@ -15,11 +15,13 @@ const state = {
   editingTeamId: null,
   pricingServiceId: null,
   activeTab: "dashboard",
+  activeServiceFilter: "all",
   pdfRequest: null
 };
 
 const statusLabels = {
   scheduled: "Agendado",
+  confirmed: "Confirmado",
   in_progress: "Iniciado",
   done: "Finalizado",
   cancelled: "Cancelado"
@@ -30,7 +32,7 @@ const workflowLabels = {
   PRECIFICADA: "PRECIFICADA",
   ENVIADA_CLIENTE: "ENVIADA AO CLIENTE",
   FINALIZADA: "FINALIZADA",
-  CANCELADA: "CANCELADA"
+  CANCELADA: "Cancelado"
 };
 
 const trackingStatuses = [
@@ -48,6 +50,7 @@ const pageText = {
   materials: ["Materiais", "Cadastre peças e códigos para montar romaneios."],
   teams: ["Equipes", "Monte equipes, líderes e envios coletivos."],
   services: ["Serviços", "Cadastre, envie e acompanhe a agenda da equipe."],
+  cancelled: ["Cancelados", "Serviços cancelados ficam separados da fila principal."],
   employees: ["Funcionários", "Gerencie quem recebe os serviços."]
 };
 
@@ -159,6 +162,18 @@ function workflowBadgeClass(service) {
   return service?.status || "scheduled";
 }
 
+function isConfirmedService(service) {
+  return isServicePriced(service) || isSentToClient(service);
+}
+
+function displayStatus(service) {
+  if (service?.status === "cancelled") return { key: "cancelled", label: "Cancelado" };
+  if (service?.status === "in_progress") return { key: "in_progress", label: "Em andamento" };
+  if (service?.status === "done") return { key: "done", label: "Finalizado" };
+  if (isConfirmedService(service)) return { key: "confirmed", label: "Confirmado" };
+  return { key: "scheduled", label: "Agendado" };
+}
+
 function priceStatusLabel(service) {
   return isServicePriced(service) ? "PRECIFICADA" : "AGUARDANDO_PREÇO";
 }
@@ -210,6 +225,22 @@ function serviceFinishedDate(service) {
   return service.finishedAt ? shortDate(service.finishedAt) : shortDate(service.updatedAt || service.date);
 }
 
+function dateValue(value) {
+  if (!value) return 0;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function monthKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function serviceDateKey(service) {
+  return service?.date || (service?.createdAt ? service.createdAt.slice(0, 10) : "");
+}
+
 function buildWhatsAppMessage(service) {
   const customerName = service.client?.name || service.customer || "Cliente";
   const lines = [
@@ -247,6 +278,28 @@ function toast(title, message, type = "info") {
   node.innerHTML = `<strong>${escapeHTML(title)}</strong><span>${escapeHTML(message)}</span>`;
   zone.appendChild(node);
   window.setTimeout(() => node.remove(), 4600);
+}
+
+function setButtonLoading(button, loading) {
+  if (!button) return () => {};
+  if (loading) {
+    button.dataset.loadingText = button.innerHTML;
+    button.disabled = true;
+    button.classList.add("is-loading");
+    return () => setButtonLoading(button, false);
+  }
+  button.disabled = false;
+  button.classList.remove("is-loading");
+  if (button.dataset.loadingText) {
+    button.innerHTML = button.dataset.loadingText;
+    delete button.dataset.loadingText;
+    refreshIcons();
+  }
+  return () => {};
+}
+
+function startSubmitLoading(event) {
+  return setButtonLoading(event?.currentTarget?.querySelector('button[type="submit"]'), true);
 }
 
 function browserNotify(title, body) {
@@ -342,6 +395,7 @@ function showApp() {
   $("#loginView").classList.add("hidden");
   $("#appView").classList.remove("hidden");
   $("#adminName").textContent = state.user?.name || "Administrador";
+  $("#adminProfileName").textContent = state.user?.name || "Administrador";
   renderSettings();
 }
 
@@ -352,8 +406,11 @@ function switchTab(tab) {
   $(`#${tab}Tab`).classList.remove("hidden");
   $("#pageTitle").textContent = pageText[tab][0];
   $("#pageSubtitle").textContent = pageText[tab][1];
+  if (tab === "services") setServiceFormOpen(false);
+  if (tab === "employees") setEmployeeFormOpen(false);
   if (tab === "settings") renderSettings();
   renderPricingAlerts();
+  closeSidebarDrawer();
 }
 
 function connectSocket() {
@@ -386,6 +443,14 @@ function connectSocket() {
     browserNotify("EG Automações Services", message || `${service.code} atualizado.`);
   });
 
+  state.socket.on("service:deleted", ({ service, message }) => {
+    removeService(service?.id);
+    renderServices();
+    renderClientHistory();
+    renderCancelledServices();
+    toast("Serviço excluído", message || `${service?.code || "Serviço"} excluído.`);
+  });
+
   state.socket.on("employee:updated", async ({ message }) => {
     await loadEmployees();
     toast("Equipe", message || "Funcionário atualizado.");
@@ -411,6 +476,11 @@ function upsertService(service) {
   const index = state.services.findIndex((item) => item.id === service.id);
   if (index >= 0) state.services[index] = service;
   else state.services.unshift(service);
+}
+
+function removeService(serviceId) {
+  if (!serviceId) return;
+  state.services = state.services.filter((item) => item.id !== serviceId);
 }
 
 async function loadMe() {
@@ -461,6 +531,8 @@ async function loadServices() {
   state.services = await api("/api/services");
   renderServices();
   renderClientHistory();
+  renderCancelledServices();
+  renderDashboard();
 }
 
 async function loadAll() {
@@ -469,31 +541,55 @@ async function loadAll() {
 
 function renderDashboard() {
   const dashboard = state.dashboard || {};
+  const services = state.services || [];
+  const nonCancelled = services.filter((service) => service.status !== "cancelled");
+  const currentMonth = monthKey();
+  const monthServices = services.filter((service) => {
+    const baseDate = service.pricedAt || service.finishedAt || serviceDateKey(service);
+    return isServicePriced(service) && monthKey(baseDate) === currentMonth;
+  });
+  const totalMonth = sumServiceValues(monthServices);
+  const pendingCount = pendingPricingCount();
   const stats = [
-    ["Aguardando preço", dashboard.pendingPricing || 0, "alert"],
-    ["Precificados", dashboard.pricedServices || 0, "priced"],
-    ["Enviados ao cliente", dashboard.sentToClient || 0, "sent"],
-    ["Total", dashboard.total || 0, ""],
-    ["Agendados", dashboard.scheduled || 0, ""],
-    ["Iniciados", dashboard.inProgress || 0, ""],
-    ["Finalizados", dashboard.done || 0, ""],
-    ["Cancelados", dashboard.cancelled || 0, ""],
-    ["Clientes", dashboard.clients || 0, ""],
-    ["Materiais", dashboard.materials || 0, ""],
-    ["Equipes", dashboard.teams || 0, ""],
-    ["Equipe ativa", dashboard.activeEmployees || 0, ""]
+    ["Agendados", services.length ? nonCancelled.filter((service) => service.status === "scheduled").length : dashboard.scheduled || 0, "scheduled"],
+    ["Confirmados", services.length ? nonCancelled.filter(isConfirmedService).length : dashboard.pricedServices || 0, "confirmed"],
+    ["Em andamento", services.length ? nonCancelled.filter((service) => service.status === "in_progress").length : dashboard.inProgress || 0, "in-progress"],
+    ["Finalizados", services.length ? nonCancelled.filter((service) => service.status === "done").length : dashboard.done || 0, "done"],
+    ["Faturado no mês", formatCurrency(totalMonth), "revenue"],
+    ["Pendentes", pendingCount, "alert"]
   ];
 
   $("#statsGrid").innerHTML = stats
-    .map(([label, value, modifier]) => `<section class="stat ${modifier ? `stat-${modifier}` : ""}"><span>${label}</span><strong>${value}</strong></section>`)
-    .join("");
+    .map(([label, value, modifier]) =>
+`
+<div class="stat-card stat-${modifier}">
+    <span class="stat-icon"><i data-lucide="${modifier === "revenue" ? "banknote" : modifier === "alert" ? "badge-alert" : modifier === "confirmed" ? "badge-check" : modifier === "in-progress" ? "loader-circle" : modifier === "done" ? "check-circle-2" : "calendar-clock"}"></i></span>
+    <span>${label}</span>
+    <strong>${value}</strong>
+</div>
+`).join("");
+
+  const recentServices = nonCancelled.slice().sort((a, b) => serviceTimestamp(b) - serviceTimestamp(a)).slice(0, 5);
+  const latestServices = nonCancelled.slice().sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt)).slice(0, 5);
+  const recentList = $("#recentServicesList");
+  const latestList = $("#latestServicesList");
+  if (recentList) {
+    recentList.innerHTML = recentServices.length
+      ? recentServices.map(dashboardServiceCard).join("")
+      : `<div class="empty">Nenhum serviço carregado ainda.</div>`;
+  }
+  if (latestList) {
+    latestList.innerHTML = latestServices.length
+      ? latestServices.map(dashboardServiceCard).join("")
+      : `<div class="empty">Nenhum serviço criado ainda.</div>`;
+  }
 
   const events = dashboard.recentEvents || [];
   $("#activityList").innerHTML = events.length
     ? events
         .map(
           (event) => `
-            <div class="activity-row">
+            <div class="activity-card">
               <div>
                 <strong>${escapeHTML(event.message)}</strong>
                 <span>${shortDate(event.createdAt)}</span>
@@ -1246,6 +1342,7 @@ function openPriceModal(serviceId) {
   $("#priceModalTitle").textContent = isServicePriced(service) ? "Alterar preço" : "Adicionar preço";
   $("#priceModalSubtitle").textContent = `${service.code} - ${service.title || ""}`;
   $("#priceModal").classList.remove("hidden");
+  window.setTimeout(() => form.elements.price.focus(), 0);
   refreshIcons();
 }
 
@@ -1260,6 +1357,7 @@ function defaultServicePdfOptions() {
 
 async function handlePriceSubmit(event) {
   event.preventDefault();
+  const stopLoading = startSubmitLoading(event);
   const form = event.currentTarget;
   const serviceId = form.elements.serviceId.value;
   const payload = {
@@ -1283,14 +1381,18 @@ async function handlePriceSubmit(event) {
     }
   } catch (error) {
     toast("Preço", error.message, "error");
+  } finally {
+    stopLoading();
   }
 }
 
 async function generateSelectedPdf() {
   if (!state.pdfRequest) return;
+  const stopLoading = setButtonLoading($("#generatePdfButton"), true);
   const options = selectedPdfOptions();
   if (!Object.values(options).some(Boolean)) {
     toast("PDF", "Selecione pelo menos uma informação para o PDF.", "error");
+    stopLoading();
     return;
   }
 
@@ -1302,6 +1404,7 @@ async function generateSelectedPdf() {
         toast("PDF", `PDF baixado: ${fileName}.`);
       } catch (error) {
         toast("PDF", error.message, "error");
+        stopLoading();
         return;
       }
     }
@@ -1314,72 +1417,245 @@ async function generateSelectedPdf() {
       toast("PDF", `PDF baixado: ${fileName}.`);
     } catch (error) {
       toast("PDF", error.message, "error");
+      stopLoading();
       return;
     }
   }
 
   closePdfOptions();
+  stopLoading();
+}
+
+function actionMenuButton(action, serviceId, icon, label, extraClass = "", disabled = false) {
+  return `
+    <button class="${escapeHTML(extraClass)}" type="button" data-action="${escapeHTML(action)}" data-id="${escapeHTML(serviceId)}" ${disabled ? "disabled" : ""}>
+      <i data-lucide="${escapeHTML(icon)}"></i>${escapeHTML(label)}
+    </button>
+  `;
+}
+
+function serviceActionMenu(service, { canAdminAct, canReport, needsPrice }) {
+  if (service.status === "cancelled") {
+    const cancelledActions = [
+      actionMenuButton("duplicate-service", service.id, "copy", "Duplicar"),
+      actionMenuButton("delete-service", service.id, "trash-2", "Excluir definitivamente", "danger-menu-item")
+    ];
+
+    return `
+      <details class="action-menu action-menu-cancelled">
+        <summary aria-label="Abrir ações do serviço cancelado"><i data-lucide="more-vertical"></i></summary>
+        <div class="action-menu-list">${cancelledActions.join("")}</div>
+      </details>
+    `;
+  }
+
+  const actions = [
+    canAdminAct ? actionMenuButton("edit-service", service.id, "pencil", "Editar") : "",
+    actionMenuButton("duplicate-service", service.id, "copy", "Duplicar"),
+    actionMenuButton("finish-service", service.id, "check-circle-2", "Finalizar", "", true),
+    needsPrice ? actionMenuButton("add-price", service.id, "dollar-sign", "Adicionar preço") : "",
+    canAdminAct ? actionMenuButton("cancel-service", service.id, "x-circle", "Cancelar", "danger-menu-item") : "",
+    service.status === "cancelled" ? actionMenuButton("delete-service", service.id, "trash-2", "Excluir definitivamente", "danger-menu-item") : "",
+    canReport ? actionMenuButton("open-report", service.id, "printer", "Imprimir / PDF") : "",
+    canReport ? actionMenuButton("send-report", service.id, "mail", "Enviar ao cliente") : "",
+    canReport ? actionMenuButton("send-whatsapp", service.id, "message-circle", "WhatsApp") : ""
+  ].filter(Boolean);
+
+  return `
+    <details class="action-menu">
+      <summary aria-label="Abrir ações do serviço"><i data-lucide="more-vertical"></i></summary>
+      <div class="action-menu-list">${actions.join("")}</div>
+    </details>
+  `;
+}
+
+function dashboardServiceCard(service) {
+  const customer = service.client?.name || service.customer || "Cliente";
+  const status = displayStatus(service);
+  const workflowClass = workflowBadgeClass(service);
+  const workflowLabel = workflowStatusLabel(service);
+  const showWorkflowBadge = service.status !== "cancelled";
+  const value = isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preco";
+  return `
+    <article class="dashboard-service-card">
+      <div class="dashboard-service-main">
+        <span class="service-code">${escapeHTML(service.code)}</span>
+        <strong>${escapeHTML(service.title || "Servico")}</strong>
+        <span>${escapeHTML(customer)}</span>
+      </div>
+      <div class="dashboard-service-meta">
+        <span><i data-lucide="calendar-clock"></i>${escapeHTML(formatDateTime(service))}</span>
+        <span><i data-lucide="map-pin"></i>${escapeHTML(service.location || "-")}</span>
+        <span><i data-lucide="banknote"></i>${escapeHTML(value)}</span>
+      </div>
+      <div class="dashboard-service-status">
+        <span class="badge ${status.key}">${escapeHTML(status.label)}</span>
+        ${
+          showWorkflowBadge
+            ? `<span class="badge workflow-badge ${escapeHTML(workflowClass)}">${escapeHTML(workflowLabel)}</span>`
+            : ""
+        }
+      </div>
+    </article>
+  `;
 }
 
 function serviceCard(service) {
-  const employeeNames = (service.employees || []).map((employee) => employee.name).join(", ");
-  const customerName = service.client?.name || service.customer;
-  const canAdminAct = !["done", "cancelled"].includes(service.status);
-  const canReport = service.status === "done" && isServicePriced(service);
-  const needsPrice = isPendingPricing(service);
-  const badgeClass = workflowBadgeClass(service);
-  const badgeLabel = workflowStatusLabel(service);
+
+  const employeeNames = (service.employees || [])
+    .map(employee => employee.name)
+    .join(", ");
+
+  const customer =
+    service.client?.name ||
+    service.customer ||
+    "Cliente";
+
+  const status = displayStatus(service);
+
+  const workflowClass = workflowBadgeClass(service);
+
+  const workflowLabel = workflowStatusLabel(service);
+  const showWorkflowBadge = service.status !== "cancelled";
+
+  const canAdminAct =
+    !["done","cancelled"].includes(service.status);
+
+  const canReport =
+    service.status === "done" &&
+    isServicePriced(service);
+
+  const needsPrice =
+    isPendingPricing(service);
 
   return `
-    <article class="service-card ${needsPrice ? "service-card-pending" : ""}">
-      <div class="service-card-header">
+
+<article class="service-card ${needsPrice ? "service-card-pending" : ""}">
+
+    <div class="service-card-header">
+
         <div>
-          <h3>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</h3>
-          <div class="meta">
-            <span>${formatDateTime(service)}</span>
-            <span>${escapeHTML(service.location)}</span>
-            <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
-            <span>${escapeHTML(employeeNames || "Sem funcionário")}</span>
-          </div>
+
+            <span class="service-code">${escapeHTML(service.code)}</span>
+
+            <h3>${escapeHTML(service.title)}</h3>
+
+            <p class="service-client">
+                ${escapeHTML(customer)}
+            </p>
+
         </div>
-        <span class="badge ${escapeHTML(badgeClass)}">${escapeHTML(badgeLabel)}</span>
-      </div>
-      ${needsPrice ? `<div class="queue-badge"><i data-lucide="sparkles"></i>Novo serviço aguardando preço</div>` : ""}
-      <p class="notes">${escapeHTML(customerName ? `Cliente: ${customerName}` : "")}</p>
-      <p class="notes">${escapeHTML(service.address)}</p>
-      ${teamBlock(service)}
-      ${materialsBlock(service.materials || [])}
-      ${service.notes ? `<p class="notes">${escapeHTML(service.notes)}</p>` : ""}
-      ${locationBlock("Localização de início", service.startLocation)}
-      ${locationBlock("Localização final", service.finalLocation)}
-      ${photoBlock(service.servicePhotos)}
-      ${signatureBlock(service.clientSignature)}
-      ${
-        needsPrice
-          ? `<div class="row-actions">
-              <button class="primary-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Adicionar preço</button>
-            </div>`
-          : ""
-      }
-      ${
-        canReport
-          ? `<div class="row-actions">
-              <button class="ghost-button" type="button" data-action="open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>Gerar PDF</button>
-              <button class="status-button" type="button" data-action="send-report" data-id="${escapeHTML(service.id)}"><i data-lucide="mail"></i>Enviar ao cliente</button>
-              <button class="ghost-button" type="button" data-action="send-whatsapp" data-id="${escapeHTML(service.id)}"><i data-lucide="message-circle"></i>Enviar para cliente via WhatsApp</button>
-            </div>`
-          : ""
-      }
-      ${
-        canAdminAct
-          ? `<div class="row-actions">
-              <button class="ghost-button" type="button" data-action="edit-service" data-id="${escapeHTML(service.id)}"><i data-lucide="pencil"></i>Editar</button>
-              <button class="danger-button" type="button" data-action="cancel-service" data-id="${escapeHTML(service.id)}"><i data-lucide="x-circle"></i>Cancelar</button>
-            </div>`
-          : ""
-      }
-    </article>
-  `;
+
+        <div class="service-card-tools">
+
+            <span class="badge ${status.key}">
+                ${escapeHTML(status.label)}
+            </span>
+
+            ${
+              showWorkflowBadge
+                ? `<span class="badge workflow-badge ${escapeHTML(workflowClass)}">
+                    ${escapeHTML(workflowLabel)}
+                  </span>`
+                : ""
+            }
+
+            ${serviceActionMenu(service,{
+                canAdminAct,
+                canReport,
+                needsPrice
+            })}
+
+        </div>
+
+    </div>
+
+    <div class="service-info-grid">
+
+        <div>
+
+            <strong>📅 Data</strong>
+
+            <span>${formatDateTime(service)}</span>
+
+        </div>
+
+        <div>
+
+            <strong>📍 Local</strong>
+
+            <span>${escapeHTML(service.location || "-")}</span>
+
+        </div>
+
+        <div>
+
+            <strong>👷 Responsável</strong>
+
+            <span>${escapeHTML(employeeNames || "Não definido")}</span>
+
+        </div>
+
+        <div>
+
+            <strong>💰 Valor</strong>
+
+            <span>${
+              isServicePriced(service)
+                ? formatCurrency(servicePrice(service))
+                : "Aguardando preço"
+            }</span>
+
+        </div>
+
+    </div>
+
+    ${
+      service.notes
+        ? `
+        <div class="service-note">
+
+            ${escapeHTML(service.notes)}
+
+        </div>
+      `
+        : ""
+    }
+
+    <div class="service-details">
+
+    <button
+        class="details-toggle"
+        type="button"
+        onclick="this.nextElementSibling.classList.toggle('open')">
+
+        <i data-lucide="chevron-down"></i>
+
+        Ver detalhes
+
+    </button>
+
+    <div class="details-content">
+
+        ${teamBlock(service)}
+
+        ${materialsBlock(service.materials)}
+
+        ${locationBlock("Localização inicial", service.startLocation)}
+
+        ${locationBlock("Localização final", service.finalLocation)}
+
+        ${photoBlock(service.servicePhotos)}
+
+        ${signatureBlock(service.clientSignature)}
+
+    </div>
+
+</div>
+
+</article>
+
+`;
 }
 
 function serviceTrackingCard(service) {
@@ -1447,7 +1723,47 @@ function serviceMatchesListFilter(service, filter) {
   if (filter === "pending_price") return isPendingPricing(service);
   if (filter === "priced") return isServicePriced(service) && !isSentToClient(service);
   if (filter === "sent_client") return isSentToClient(service);
+  if (filter === "confirmed") return isConfirmedService(service);
   return filter === "all" || service.status === filter;
+}
+
+function serviceMatchesQuickFilter(service, filter) {
+  if (filter === "confirmed") return isConfirmedService(service);
+  if (filter === "all") return service.status !== "cancelled";
+  return service.status === filter;
+}
+
+function serviceSearchText(service) {
+  const materialText = (service.materials || [])
+    .flatMap((item) => [item.code, item.name, item.notes])
+    .join(" ");
+  return [
+    service.code,
+    service.title,
+    service.customer,
+    service.client?.name,
+    service.client?.phone,
+    service.client?.contact,
+    service.client?.email,
+    service.location,
+    service.address,
+    service.notes,
+    service.team?.name,
+    materialText
+  ]
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function serviceMatchesSearch(service, query) {
+  const normalized = String(query || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return !normalized || serviceSearchText(service).includes(normalized);
 }
 
 function compareAdminServices(a, b) {
@@ -1505,12 +1821,16 @@ function renderTracking() {
 
 function renderServices() {
   const filter = $("#statusFilter").value;
+  const quickFilter = state.activeServiceFilter || "all";
+  const search = $("#serviceSearchInput")?.value || "";
   const clientId = $("#clientFilter").value;
   const teamId = $("#teamFilter")?.value || "";
   const dateFrom = $("#dateFromFilter").value;
   const dateTo = $("#dateToFilter").value;
   const services = state.services
     .filter((service) => serviceMatchesListFilter(service, filter))
+    .filter((service) => serviceMatchesQuickFilter(service, quickFilter))
+    .filter((service) => serviceMatchesSearch(service, search))
     .filter((service) => !clientId || service.clientId === clientId)
     .filter((service) => !teamId || service.teamId === teamId)
     .filter((service) => !dateFrom || service.date >= dateFrom)
@@ -1522,9 +1842,88 @@ function renderServices() {
     ? services.map(serviceCard).join("")
     : `<div class="empty">Nenhum serviço encontrado.</div>`;
   renderPendingPricing();
+  renderCancelledServices();
+  renderServiceQuickFilters();
   renderTracking();
   renderPricingAlerts();
+  renderDashboard();
   refreshIcons();
+}
+
+function renderCancelledServices() {
+  const list = $("#cancelledServiceList");
+  if (!list) return;
+  const cancelledServices = state.services
+    .filter((service) => service.status === "cancelled")
+    .slice()
+    .sort(compareAdminServices);
+  list.innerHTML = cancelledServices.length
+    ? cancelledServices.map(serviceCard).join("")
+    : `<div class="empty">Nenhum serviço cancelado.</div>`;
+  refreshIcons();
+}
+
+function renderServiceQuickFilters() {
+  $$("#serviceQuickFilters .quick-filter-button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.filter === state.activeServiceFilter);
+  });
+}
+
+function closeActionMenus(except = null) {
+  $$(".action-menu[open]").forEach((menu) => {
+    if (menu !== except) menu.removeAttribute("open");
+  });
+}
+
+function positionActionMenu(menu) {
+  const summary = menu?.querySelector("summary");
+  const list = menu?.querySelector(".action-menu-list");
+  if (!summary || !list) return;
+
+  const rect = summary.getBoundingClientRect();
+  const width = Math.min(260, window.innerWidth - 16);
+  const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+  const estimatedHeight = Math.min(360, Math.max(180, list.scrollHeight || 220));
+  const hasRoomBelow = rect.bottom + estimatedHeight + 12 <= window.innerHeight;
+  const top = hasRoomBelow ? rect.bottom + 8 : Math.max(8, rect.top - estimatedHeight - 8);
+
+  list.style.setProperty("--action-menu-width", `${width}px`);
+  list.style.setProperty("--action-menu-left", `${left}px`);
+  list.style.setProperty("--action-menu-top", `${top}px`);
+}
+
+function repositionOpenActionMenus() {
+  $$(".action-menu[open]").forEach(positionActionMenu);
+}
+
+function handleServiceAction(button) {
+  if (!button) return;
+  closeActionMenus();
+  if (button.dataset.action === "edit-service") {
+    const service = state.services.find((item) => item.id === button.dataset.id);
+    if (service) fillServiceForm(service);
+  }
+  if (button.dataset.action === "duplicate-service") {
+    duplicateService(button.dataset.id);
+  }
+  if (button.dataset.action === "cancel-service") {
+    cancelService(button.dataset.id);
+  }
+  if (button.dataset.action === "delete-service") {
+    deleteCancelledService(button.dataset.id);
+  }
+  if (button.dataset.action === "add-price") {
+    openPriceModal(button.dataset.id);
+  }
+  if (button.dataset.action === "open-report") {
+    openPdfOptions("service", button.dataset.id);
+  }
+  if (button.dataset.action === "send-report") {
+    sendServiceReport(button.dataset.id);
+  }
+  if (button.dataset.action === "send-whatsapp") {
+    sendServiceWhatsApp(button.dataset.id);
+  }
 }
 
 function clientHistoryFilters() {
@@ -1598,32 +1997,53 @@ function renderPendingPricing() {
 function clientHistoryRow(service) {
   const customerName = service.client?.name || service.customer || "Cliente não informado";
   const priced = isServicePriced(service);
+  const statusClass = workflowBadgeClass(service);
+  const statusLabel = workflowStatusLabel(service);
+  const valueLabel = priced ? formatCurrency(servicePrice(service)) : "Aguardando preço";
+  const responsible = serviceResponsibleNames(service);
+  const location = service.location || service.address || "Local não informado";
+  const financeNotes = service.financeNotes || "";
   return `
-    <div class="employee-row history-row ${priced ? "history-priced" : "history-pending"}">
-      <div>
-        <strong>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</strong>
-        <span>${escapeHTML(customerName)} - ${escapeHTML(formatDateTime(service))}</span>
-        <span>${escapeHTML(workflowStatusLabel(service))} - ${escapeHTML(priced ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
+    <article class="history-card ${priced ? "history-priced" : "history-pending"}">
+      <div class="history-card-main">
+        <div class="history-card-title">
+          <span class="service-code">${escapeHTML(service.code)}</span>
+          <strong>${escapeHTML(service.title || "Serviço")}</strong>
+        </div>
+        <div class="history-card-meta">
+          <span><i data-lucide="user-round"></i>${escapeHTML(customerName)}</span>
+          <span><i data-lucide="calendar-clock"></i>${escapeHTML(formatDateTime(service))}</span>
+          <span><i data-lucide="map-pin"></i>${escapeHTML(location)}</span>
+          <span><i data-lucide="users-round"></i>${escapeHTML(responsible)}</span>
+        </div>
+        ${financeNotes ? `<p class="history-note">${escapeHTML(financeNotes)}</p>` : ""}
       </div>
-      <div class="row-actions">
+      <div class="history-card-side">
+        <span class="badge workflow-badge ${escapeHTML(statusClass)}">${escapeHTML(statusLabel)}</span>
+        <strong class="history-value ${priced ? "" : "muted"}">${escapeHTML(valueLabel)}</strong>
+        <small>${priced ? "Valor lançado" : "Aguardando lançamento"}</small>
         ${
           priced
             ? `<button class="ghost-button" type="button" data-action="history-open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>PDF da OS</button>`
-            : `<span class="badge pending_price">Aguardando preço</span>`
+            : `<span class="history-unavailable">PDF após preço</span>`
         }
       </div>
-    </div>
+    </article>
   `;
 }
 
 function historyGroup(title, services) {
+  const groupTotal = sumServiceValues(services);
   return `
     <section class="history-group">
       <div class="history-group-title">
-        <h3>${escapeHTML(title)}</h3>
-        <span>${services.length} serviço(s)</span>
+        <div>
+          <h3>${escapeHTML(title)}</h3>
+          <span>${services.length} serviço(s)</span>
+        </div>
+        <strong>${escapeHTML(formatCurrency(groupTotal))}</strong>
       </div>
-      <div class="list">
+      <div class="history-group-list">
         ${services.length ? services.map(clientHistoryRow).join("") : `<div class="empty">Nenhum serviço nesta categoria.</div>`}
       </div>
     </section>
@@ -1641,6 +2061,9 @@ function renderClientHistory() {
   const pricedServices = services.filter(isServicePriced);
   const waitingServices = services.filter((service) => !isServicePriced(service));
   const totalValue = sumServiceValues(services);
+  const sortedByDate = services.slice().sort((a, b) => serviceTimestamp(a) - serviceTimestamp(b));
+  const firstService = sortedByDate[0];
+  const lastService = sortedByDate[sortedByDate.length - 1];
 
   summary.innerHTML = `
     <section class="history-stat">
@@ -1656,13 +2079,25 @@ function renderClientHistory() {
       <strong>${waitingServices.length}</strong>
     </section>
     <section class="history-stat">
+      <span>Precificados</span>
+      <strong>${pricedServices.length}</strong>
+    </section>
+    <section class="history-stat">
       <span>Soma dos valores</span>
       <strong>${escapeHTML(formatCurrency(totalValue))}</strong>
+    </section>
+    <section class="history-stat">
+      <span>Primeiro atendimento</span>
+      <strong>${escapeHTML(firstService ? formatDateTime(firstService) : "-")}</strong>
+    </section>
+    <section class="history-stat">
+      <span>Último atendimento</span>
+      <strong>${escapeHTML(lastService ? formatDateTime(lastService) : "-")}</strong>
     </section>
   `;
 
   list.innerHTML = services.length
-    ? `${historyGroup("Serviços precificados e enviados", pricedServices)}${historyGroup("Serviços aguardando preço", waitingServices)}`
+    ? `${historyGroup("Serviços com valor lançado", pricedServices)}${historyGroup("Aguardando preço", waitingServices)}`
     : `<div class="empty">Nenhum serviço encontrado para os filtros.</div>`;
   refreshIcons();
 }
@@ -1838,6 +2273,33 @@ function renderEmployees() {
   refreshIcons();
 }
 
+function setServiceFormOpen(open, { reset = false } = {}) {
+  const panel = $("#serviceFormPanel");
+  const button = $("#openServiceFormButton");
+  if (!panel) return;
+  if (reset) clearServiceForm();
+  panel.classList.toggle("hidden", !open);
+  if (button) {
+    button.innerHTML = open ? `<i data-lucide="x"></i>Fechar cadastro` : `<i data-lucide="plus"></i>Novo serviço`;
+  }
+  if (open) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  refreshIcons();
+}
+
+function setEmployeeFormOpen(open, { reset = false } = {}) {
+  const panel = $("#employeeFormPanel");
+  const button = $("#openEmployeeFormButton");
+  const form = $("#employeeForm");
+  if (!panel) return;
+  if (reset) form?.reset();
+  panel.classList.toggle("hidden", !open);
+  if (button) {
+    button.innerHTML = open ? `<i data-lucide="x"></i>Fechar cadastro` : `<i data-lucide="user-plus"></i>Novo funcionário`;
+  }
+  if (open) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  refreshIcons();
+}
+
 function clearServiceForm() {
   state.editingServiceId = null;
   state.serviceMaterials = [];
@@ -1876,7 +2338,40 @@ function fillServiceForm(service) {
   renderMaterialPreview();
   renderServiceMaterials();
   switchTab("services");
+  setServiceFormOpen(true);
   form.scrollIntoView({ behavior: "smooth", block: "start" });
+  refreshIcons();
+}
+
+function duplicateService(serviceId) {
+  const service = state.services.find((item) => item.id === serviceId);
+  if (!service) return;
+  const form = $("#serviceForm");
+  state.editingServiceId = null;
+  form.elements.id.value = "";
+  form.elements.title.value = service.title || "";
+  form.elements.clientId.value = service.clientId || "";
+  form.elements.teamId.value = service.teamId || "";
+  form.elements.customer.value = service.customer || "";
+  form.elements.location.value = service.location || "";
+  form.elements.date.value = service.date || "";
+  form.elements.time.value = service.time || "";
+  form.elements.address.value = service.address || "";
+  form.elements.notes.value = service.notes || "";
+  state.serviceMaterials = (service.materials || []).map((item) => ({ ...item }));
+  $("#serviceFormTitle").textContent = `Duplicar ${service.code}`;
+  $("#submitServiceButton").innerHTML = `<i data-lucide="send"></i>Criar cópia`;
+  renderClientSelect();
+  form.elements.clientId.value = service.clientId || "";
+  renderTeamSelect();
+  form.elements.teamId.value = service.teamId || "";
+  renderEmployeeCheckboxes();
+  renderMaterialPreview();
+  renderServiceMaterials();
+  switchTab("services");
+  setServiceFormOpen(true);
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  toast("Serviço", "Revise a cópia e clique em Criar cópia para lançar uma nova OS.");
   refreshIcons();
 }
 
@@ -1971,6 +2466,7 @@ function teamPayload() {
 
 async function handleClientSubmit(event) {
   event.preventDefault();
+  const stopLoading = startSubmitLoading(event);
   const form = $("#clientForm");
   const payload = Object.fromEntries(new FormData(form).entries());
   const editingId = state.editingClientId;
@@ -1985,11 +2481,14 @@ async function handleClientSubmit(event) {
     clearClientForm();
   } catch (error) {
     toast("Clientes", error.message, "error");
+  } finally {
+    stopLoading();
   }
 }
 
 async function handleMaterialSubmit(event) {
   event.preventDefault();
+  const stopLoading = startSubmitLoading(event);
   const form = $("#materialForm");
   const payload = Object.fromEntries(new FormData(form).entries());
   payload.code = normalizeCode(payload.code);
@@ -2005,11 +2504,14 @@ async function handleMaterialSubmit(event) {
     clearMaterialForm();
   } catch (error) {
     toast("Materiais", error.message, "error");
+  } finally {
+    stopLoading();
   }
 }
 
 async function handleTeamSubmit(event) {
   event.preventDefault();
+  const stopLoading = startSubmitLoading(event);
   const payload = teamPayload();
   const editingId = state.editingTeamId;
   const path = editingId ? `/api/teams/${editingId}` : "/api/teams";
@@ -2023,11 +2525,14 @@ async function handleTeamSubmit(event) {
     clearTeamForm();
   } catch (error) {
     toast("Equipes", error.message, "error");
+  } finally {
+    stopLoading();
   }
 }
 
 async function handleServiceSubmit(event) {
   event.preventDefault();
+  const stopLoading = startSubmitLoading(event);
   const payload = servicePayload();
   const editingId = state.editingServiceId;
   const path = editingId ? `/api/services/${editingId}` : "/api/services";
@@ -2041,8 +2546,11 @@ async function handleServiceSubmit(event) {
     await loadDashboard();
     toast("Serviço", editingId ? "Serviço atualizado." : "Serviço enviado aos funcionários.");
     clearServiceForm();
+    setServiceFormOpen(false);
   } catch (error) {
     toast("Serviço", error.message, "error");
+  } finally {
+    stopLoading();
   }
 }
 
@@ -2092,6 +2600,7 @@ async function deleteTeam(teamId) {
 
 async function handleEmployeeSubmit(event) {
   event.preventDefault();
+  const stopLoading = startSubmitLoading(event);
   const form = $("#employeeForm");
   const payload = Object.fromEntries(new FormData(form).entries());
 
@@ -2101,13 +2610,17 @@ async function handleEmployeeSubmit(event) {
     await loadEmployees();
     await loadDashboard();
     toast("Funcionário", "Funcionário cadastrado.");
+    setEmployeeFormOpen(false);
   } catch (error) {
     toast("Funcionário", error.message, "error");
+  } finally {
+    stopLoading();
   }
 }
 
 async function handleAdminSettingsSubmit(event) {
   event.preventDefault();
+  const stopLoading = startSubmitLoading(event);
   const form = $("#adminSettingsForm");
   const payload = Object.fromEntries(new FormData(form).entries());
 
@@ -2121,6 +2634,8 @@ async function handleAdminSettingsSubmit(event) {
     toast("Configurações", "Acesso do admin atualizado.");
   } catch (error) {
     toast("Configurações", error.message, "error");
+  } finally {
+    stopLoading();
   }
 }
 
@@ -2132,10 +2647,74 @@ async function cancelService(serviceId) {
     upsertService(updated);
     renderServices();
     renderClientHistory();
+    renderCancelledServices();
     await loadDashboard();
+    switchTab("cancelled");
     toast("Serviço", `${updated.code} cancelado.`);
   } catch (error) {
     toast("Serviço", error.message, "error");
+  }
+}
+
+async function deleteCancelledService(serviceId) {
+  const service = state.services.find((item) => item.id === serviceId);
+  if (!service) return;
+  if (service.status !== "cancelled") {
+    toast("Serviço", "A exclusão definitiva só é permitida para serviços cancelados.", "error");
+    return;
+  }
+  const confirmation = window.prompt(`Para excluir definitivamente ${service.code}, digite EXCLUIR:`);
+  if (confirmation !== "EXCLUIR") return;
+
+  try {
+    await api(`/api/services/${serviceId}`, { method: "DELETE" });
+    state.services = state.services.filter((item) => item.id !== serviceId);
+    renderServices();
+    renderClientHistory();
+    renderCancelledServices();
+    await loadDashboard();
+    toast("Serviço", `${service.code} excluído definitivamente.`);
+  } catch (error) {
+    toast("Serviço", error.message, "error");
+  }
+}
+
+async function clearCancelledServices() {
+  const cancelledServices = state.services.filter((service) => service.status === "cancelled");
+  if (!cancelledServices.length) {
+    toast("Cancelados", "Não há serviços cancelados para limpar.");
+    return;
+  }
+
+  const confirmation = window.prompt(`Para excluir definitivamente ${cancelledServices.length} serviço(s) cancelado(s), digite LIMPAR:`);
+  if (confirmation !== "LIMPAR") return;
+
+  const button = $("#clearCancelledServicesButton");
+  const stopLoading = setButtonLoading(button, true);
+  const failed = [];
+
+  try {
+    for (const service of cancelledServices) {
+      try {
+        await api(`/api/services/${service.id}`, { method: "DELETE" });
+        state.services = state.services.filter((item) => item.id !== service.id);
+      } catch (error) {
+        failed.push(`${service.code}: ${error.message}`);
+      }
+    }
+
+    renderServices();
+    renderClientHistory();
+    renderCancelledServices();
+    await loadDashboard();
+
+    if (failed.length) {
+      toast("Cancelados", `${failed.length} serviço(s) não foram excluídos.`, "error");
+    } else {
+      toast("Cancelados", "Todos os serviços cancelados foram limpos.");
+    }
+  } finally {
+    stopLoading();
   }
 }
 
@@ -2188,6 +2767,7 @@ async function logout() {
 function bindEvents() {
   $("#adminLoginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const stopLoading = startSubmitLoading(event);
     window.EGRuntime?.persistConnectionForm(event.currentTarget);
     const credentials = Object.fromEntries(new FormData(event.currentTarget).entries());
     delete credentials.serverUrl;
@@ -2201,6 +2781,8 @@ function bindEvents() {
       await loadAll();
     } catch (error) {
       toast("Login", error.message, "error");
+    } finally {
+      stopLoading();
     }
   });
 
@@ -2215,8 +2797,13 @@ function bindEvents() {
     document.querySelector(".pending-pricing-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   $("#logoutButton").addEventListener("click", logout);
+  $("#openServiceFormButton")?.addEventListener("click", () => {
+    const isOpen = !$("#serviceFormPanel")?.classList.contains("hidden");
+    setServiceFormOpen(!isOpen, { reset: !isOpen });
+  });
   $("#serviceForm").addEventListener("submit", handleServiceSubmit);
   $("#clearServiceFormButton").addEventListener("click", clearServiceForm);
+  $("#closeServiceFormButton")?.addEventListener("click", () => setServiceFormOpen(false, { reset: true }));
   $("#clientForm").addEventListener("submit", handleClientSubmit);
   $("#clearClientFormButton").addEventListener("click", clearClientForm);
   $("#materialForm").addEventListener("submit", handleMaterialSubmit);
@@ -2234,6 +2821,13 @@ function bindEvents() {
     if (!checkbox.checked && leader.value === checkbox.value) leader.value = "";
   });
   $("#statusFilter").addEventListener("change", renderServices);
+  $("#serviceSearchInput")?.addEventListener("input", renderServices);
+  $("#serviceQuickFilters")?.addEventListener("click", (event) => {
+    const button = event.target.closest(".quick-filter-button");
+    if (!button) return;
+    state.activeServiceFilter = button.dataset.filter || "all";
+    renderServices();
+  });
   $("#clientFilter").addEventListener("change", renderServices);
   $("#teamFilter").addEventListener("change", renderServices);
   $("#dateFromFilter").addEventListener("change", renderServices);
@@ -2242,6 +2836,8 @@ function bindEvents() {
     $("#clientFilter").value = "";
     $("#teamFilter").value = "";
     $("#statusFilter").value = "all";
+    $("#serviceSearchInput").value = "";
+    state.activeServiceFilter = "all";
     $("#dateFromFilter").value = "";
     $("#dateToFilter").value = "";
     renderServices();
@@ -2269,7 +2865,12 @@ function bindEvents() {
   $("#priceModal").addEventListener("click", (event) => {
     if (event.target.id === "priceModal") closePriceModal();
   });
+  $("#openEmployeeFormButton")?.addEventListener("click", () => {
+    const isOpen = !$("#employeeFormPanel")?.classList.contains("hidden");
+    setEmployeeFormOpen(!isOpen, { reset: !isOpen });
+  });
   $("#employeeForm").addEventListener("submit", handleEmployeeSubmit);
+  $("#closeEmployeeFormButton")?.addEventListener("click", () => setEmployeeFormOpen(false, { reset: true }));
   $("#adminSettingsForm").addEventListener("submit", handleAdminSettingsSubmit);
   $("#clientSelect").addEventListener("change", (event) => {
     const client = state.clients.find((item) => item.id === event.target.value);
@@ -2281,27 +2882,29 @@ function bindEvents() {
 
   $("#serviceList").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-action]");
-    if (!button) return;
-    if (button.dataset.action === "edit-service") {
-      const service = state.services.find((item) => item.id === button.dataset.id);
-      if (service) fillServiceForm(service);
-    }
-    if (button.dataset.action === "cancel-service") {
-      cancelService(button.dataset.id);
-    }
-    if (button.dataset.action === "add-price") {
-      openPriceModal(button.dataset.id);
-    }
-    if (button.dataset.action === "open-report") {
-      openPdfOptions("service", button.dataset.id);
-    }
-    if (button.dataset.action === "send-report") {
-      sendServiceReport(button.dataset.id);
-    }
-    if (button.dataset.action === "send-whatsapp") {
-      sendServiceWhatsApp(button.dataset.id);
-    }
+    handleServiceAction(button);
   });
+
+  $("#cancelledServiceList")?.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action]");
+    handleServiceAction(button);
+  });
+  $("#clearCancelledServicesButton")?.addEventListener("click", clearCancelledServices);
+
+  document.addEventListener("toggle", (event) => {
+    const menu = event.target.closest?.(".action-menu");
+    if (menu?.open) {
+      closeActionMenus(menu);
+      positionActionMenu(menu);
+    }
+  }, true);
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".action-menu")) closeActionMenus();
+  });
+
+  window.addEventListener("resize", closeActionMenus);
+  window.addEventListener("scroll", repositionOpenActionMenus, true);
 
   $("#clientHistoryList").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-action]");
@@ -2409,3 +3012,60 @@ async function boot() {
 }
 
 boot();
+
+const drawerToggle = document.getElementById("drawerToggle");
+const sidebar = document.getElementById("sidebar");
+const overlay = document.getElementById("drawerOverlay");
+const appShell = document.getElementById("appView");
+
+function setDrawerOpen(open) {
+  if (!drawerToggle || !sidebar || !overlay) return;
+  sidebar.classList.toggle("open", open);
+  overlay.classList.toggle("open", open);
+  drawerToggle.setAttribute("aria-expanded", String(open));
+  document.body.classList.toggle("drawer-open", open);
+}
+
+function closeSidebarDrawer() {
+  if (window.matchMedia("(max-width: 900px)").matches) setDrawerOpen(false);
+}
+
+function setSidebarCollapsed(collapsed) {
+  if (!appShell || !drawerToggle) return;
+  appShell.classList.toggle("sidebar-collapsed", collapsed);
+  drawerToggle.setAttribute("aria-expanded", String(!collapsed));
+  localStorage.setItem("egAdminSidebarCollapsed", collapsed ? "1" : "0");
+  refreshIcons();
+}
+
+if (drawerToggle && sidebar && overlay) {
+
+    drawerToggle.addEventListener("click", (e) => {
+
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.matchMedia("(max-width: 900px)").matches) {
+          setDrawerOpen(!sidebar.classList.contains("open"));
+          return;
+        }
+        setSidebarCollapsed(!appShell.classList.contains("sidebar-collapsed"));
+
+    });
+
+    overlay.addEventListener("click", () => setDrawerOpen(false));
+
+    sidebar.querySelectorAll(".nav-button").forEach((button) => {
+        button.addEventListener("click", closeSidebarDrawer);
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            setDrawerOpen(false);
+        }
+    });
+
+}
+
+if (drawerToggle && appShell) {
+  setSidebarCollapsed(localStorage.getItem("egAdminSidebarCollapsed") === "1");
+}

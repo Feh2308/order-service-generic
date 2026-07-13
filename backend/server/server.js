@@ -540,13 +540,19 @@ app.post("/api/services/:id/cancel", auth("admin"), asyncRoute(async (req, res) 
   res.json(result);
 }));
 
+app.delete("/api/services/:id", auth("admin"), asyncRoute(async (req, res) => {
+  const result = await store.deleteCancelledService(req.params.id, req.user.id);
+  if (!result) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (result.locked) {
+    return res.status(409).json({ error: "Apenas serviços cancelados podem ser excluídos definitivamente.", service: result.service });
+  }
+
+  broadcastService("service:deleted", result, `Serviço ${result.code} excluído definitivamente.`);
+  emitDashboard();
+  res.json(result);
+}));
+
 app.post("/api/services/:id/start", auth("employee"), asyncRoute(async (req, res) => {
-  if (!hasLocationProof(req.body || {}, "startLocation")) {
-    return res.status(400).json({ error: "Informe a localização de início antes de iniciar." });
-  }
-  if (!hasServicePhoto(req.body || {}, "beforePhoto")) {
-    return res.status(400).json({ error: "Tire ou anexe a foto de antes antes de iniciar." });
-  }
   const result = await store.startService(req.params.id, req.user.id, req.body || {});
   if (!result) return res.status(404).json({ error: "Serviço não encontrado." });
   if (result.forbidden) return res.status(403).json({ error: "Serviço não atribuído a este funcionário." });
@@ -559,14 +565,8 @@ app.post("/api/services/:id/start", auth("employee"), asyncRoute(async (req, res
 }));
 
 app.post("/api/services/:id/finish", auth("employee"), asyncRoute(async (req, res) => {
-  if (!hasLocationProof(req.body || {}, "finalLocation")) {
-    return res.status(400).json({ error: "Informe a localização final antes de finalizar." });
-  }
   if (!hasClientSignature(req.body || {})) {
     return res.status(400).json({ error: "Colete a assinatura do cliente antes de finalizar." });
-  }
-  if (!hasServicePhoto(req.body || {}, "afterPhoto")) {
-    return res.status(400).json({ error: "Tire ou anexe a foto de depois antes de finalizar." });
   }
   const result = await store.finishService(req.params.id, req.user.id, req.body || {});
   if (!result) return res.status(404).json({ error: "Serviço não encontrado." });

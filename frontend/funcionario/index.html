@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#18332f">
+    <meta name="theme-color" content="#2563eb">
     <title>Funcionário | EG Automações Services</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/assets/styles.css?v=20260620-ordem-cache-fix">
+    <link rel="stylesheet" href="/assets/Funcionario.css?v=20260713-optional-proof-single-photo">
   </head>
   <body>
     <main id="loginView" class="login-shell">
@@ -42,6 +42,17 @@
     <main id="appView" class="employee-app hidden">
       <header class="employee-header">
         <div class="employee-topbar">
+          <button
+    id="employeeMenuToggle"
+    class="menu-toggle"
+    type="button"
+    aria-label="Abrir menu"
+    aria-controls="employeeMenu"
+    aria-expanded="false">
+
+    <i data-lucide="menu"></i>
+
+</button>
         <div class="brand">
           <img src="/assets/logo.svg" alt="EG Automações Services">
           <span>
@@ -55,7 +66,12 @@
           <button id="logoutButton" class="ghost-button" type="button"><i data-lucide="log-out"></i>Sair</button>
         </div>
         </div>
-        <nav class="employee-menu" aria-label="Menu do funcionário">
+
+        <aside id="employeeDrawerOverlay" class="employee-drawer" aria-hidden="true"></aside>
+        <nav
+          id="employeeMenu"
+          class="employee-menu"
+          aria-label="Menu do funcionário">
           <a class="employee-menu-button" href="#employeeOverview"><i data-lucide="layout-dashboard"></i>Resumo</a>
           <a class="employee-menu-button" href="#employeeTeams"><i data-lucide="users-round"></i>Equipes</a>
           <a class="employee-menu-button" href="#scheduledSection"><i data-lucide="calendar-clock"></i>Agendados</a>
@@ -111,7 +127,7 @@
             <div id="progressList" class="list"></div>
           </section>
 
-          <section id="doneSection" class="service-column anchor-target">
+          <section id="doneSection" class="service-column anchor-target hidden">
             <div class="column-title">
               <h2>Concluídos</h2>
               <span id="doneBadge" class="badge done">0</span>
@@ -128,6 +144,6 @@
     <script type="module" src="/env.js?v=20260620-ordem-cache-fix"></script>
     <script type="module" src="/assets/runtime.js?v=20260620-ordem-cache-fix"></script>
     <script type="module" src="/assets/icons.js?v=20260620-ordem-cache-fix"></script>
-    <script type="module" src="/assets/employee.js?v=20260620-ordem-cache-fix"></script>
+    <script type="module" src="/assets/employee.js?v=20260713-optional-proof-single-photo"></script>
   </body>
 </html>

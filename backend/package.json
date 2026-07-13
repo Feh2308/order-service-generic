@@ -8,6 +8,9 @@
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
     "check": "node --check server/config.js && node --check server/server.js && node --check server/store.js && node --check server/reports.js",
+    "migrate:supabase:dry-run": "node scripts/migrate-to-supabase.js --mode=dry-run",
+    "migrate:supabase:inspect": "node scripts/migrate-to-supabase.js --mode=inspect",
+    "migrate:supabase:apply": "node scripts/migrate-to-supabase.js --mode=apply",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:reload": "pm2 reload eg-services"
   },

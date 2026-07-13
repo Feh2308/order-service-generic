@@ -387,7 +387,14 @@ async function addEvent(type, message, details = {}) {
 
 function nextServiceCode() {
   const currentYear = new Date().getFullYear();
-  const number = db.services.length + 1;
+  const prefix = `EG-${currentYear}-`;
+  const currentMax = db.services.reduce((max, service) => {
+    const code = String(service.code || "");
+    if (!code.startsWith(prefix)) return max;
+    const value = Number(code.slice(prefix.length));
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, 0);
+  const number = currentMax + 1;
   return `EG-${currentYear}-${String(number).padStart(4, "0")}`;
 }
 
@@ -843,6 +850,23 @@ async function cancelService(serviceId) {
   return publicService(service);
 }
 
+async function deleteCancelledService(serviceId, adminId) {
+  const index = db.services.findIndex((item) => item.id === serviceId);
+  if (index < 0) return null;
+  const service = db.services[index];
+  if (service.status !== "cancelled") return { locked: true, service: publicService(service) };
+
+  const deletedService = publicService(service);
+  db.services.splice(index, 1);
+  await save(db);
+  await addEvent("service.deleted", `Serviço ${service.code} excluído definitivamente.`, {
+    serviceId: service.id,
+    adminId,
+    previousStatus: service.status
+  });
+  return deletedService;
+}
+
 function normalizeLocation(location) {
   if (!location || typeof location !== "object") return null;
 
@@ -1075,6 +1099,7 @@ module.exports = {
   createService,
   updateService,
   cancelService,
+  deleteCancelledService,
   startService,
   finishService,
   priceService,

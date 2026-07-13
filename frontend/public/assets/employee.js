@@ -282,6 +282,28 @@ function toast(title, message, type = "info") {
   window.setTimeout(() => node.remove(), 4600);
 }
 
+function setButtonLoading(button, loading) {
+  if (!button) return () => {};
+  if (loading) {
+    button.dataset.loadingText = button.innerHTML;
+    button.disabled = true;
+    button.classList.add("is-loading");
+    return () => setButtonLoading(button, false);
+  }
+  button.disabled = false;
+  button.classList.remove("is-loading");
+  if (button.dataset.loadingText) {
+    button.innerHTML = button.dataset.loadingText;
+    delete button.dataset.loadingText;
+    refreshIcons();
+  }
+  return () => {};
+}
+
+function startSubmitLoading(event) {
+  return setButtonLoading(event?.currentTarget?.querySelector('button[type="submit"]'), true);
+}
+
 function browserNotify(title, body) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   new Notification(title, {
@@ -374,6 +396,12 @@ function connectSocket() {
     toast("Serviço atualizado", message || `${service.code} atualizado.`);
     browserNotify("Serviço atualizado", message || `${service.code} atualizado.`);
   });
+  state.socket.on("service:deleted", ({ service, message }) => {
+    removeService(service?.id);
+    renderServices();
+    renderTeams();
+    toast("Serviço removido", message || `${service?.code || "Serviço"} removido.`);
+  });
   state.socket.on("team:updated", async ({ message }) => {
     await loadAll();
     toast("Equipe", message || "Equipe atualizada.");
@@ -389,6 +417,11 @@ function upsertService(service) {
   const index = state.services.findIndex((item) => item.id === service.id);
   if (index >= 0) state.services[index] = service;
   else state.services.unshift(service);
+}
+
+function removeService(serviceId) {
+  if (!serviceId) return;
+  state.services = state.services.filter((item) => item.id !== serviceId);
 }
 
 async function loadMe() {
@@ -554,12 +587,13 @@ function startControls(service) {
   return `
     <div class="location-capture">
       <label class="field">
-        <span>Localização de início</span>
+        <span>Localização de início (opcional)</span>
         <input class="input" data-start-location-input data-id="${escapeHTML(service.id)}" value="${escapeHTML(formatLocation(location))}" placeholder="Cole o link do Maps, digite o local ou use GPS">
       </label>
       <label class="field">
-        <span>Foto antes do serviço</span>
-        <input class="input" type="file" accept="image/*" capture="environment" data-before-photo-input data-id="${escapeHTML(service.id)}">
+        <span>Foto antes do serviço (opcional)</span>
+        <input class="input" type="file" accept="image/*" data-before-photo-input data-id="${escapeHTML(service.id)}" aria-label="Tirar foto ou escolher da galeria antes do serviço">
+        <small>Opcional: tire uma foto ou escolha da galeria. Se preferir, inicie sem foto.</small>
       </label>
       ${
         beforePhoto?.imageDataUrl
@@ -594,8 +628,9 @@ function finishControls(service) {
         <input class="input" data-final-location-input data-id="${escapeHTML(service.id)}" value="${escapeHTML(formatLocation(finalLocation))}" placeholder="Cole o link do Maps, digite o local ou use GPS">
       </label>
       <label class="field">
-        <span>Foto depois do serviço</span>
-        <input class="input" type="file" accept="image/*" capture="environment" data-after-photo-input data-id="${escapeHTML(service.id)}">
+        <span>Foto depois do serviço (opcional)</span>
+        <input class="input" type="file" accept="image/*" data-after-photo-input data-id="${escapeHTML(service.id)}" aria-label="Tirar foto ou escolher da galeria depois do serviço">
+        <small>Opcional: tire uma foto ou escolha da galeria. Se preferir, finalize sem foto.</small>
       </label>
       ${
         afterPhoto?.imageDataUrl
@@ -645,53 +680,96 @@ function serviceCard(service) {
         : "";
 
   return `
-    <article class="service-card work-order-card">
-      <div class="service-card-header">
+<article class="service-card work-order-card">
+
+    <div class="service-card-header">
+
         <div>
-          <h3>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</h3>
-          <div class="meta">
-            <span>${formatDateTime(service)}</span>
-            <span>${escapeHTML(service.location)}</span>
+
+            <h3>${escapeHTML(service.code)} - ${escapeHTML(service.title)}</h3>
+
+            <p class="service-client">${escapeHTML(customerName)}</p>
+
+        </div>
+
+        <span class="badge ${escapeHTML(service.status)}">
+            ${escapeHTML(statusLabels[service.status] || service.status)}
+        </span>
+
+    </div>
+
+    <div class="work-order-grid">
+
+    <div>
+
+        <strong>Cliente</strong>
+
+        <span>${escapeHTML(customerName)}</span>
+
+    </div>
+
+    <div>
+
+        <strong>Data</strong>
+
+        <span>${escapeHTML(formatDateTime(service))}</span>
+
+    </div>
+
+    <div>
+
+        <strong>Local</strong>
+
+        <span>${escapeHTML(service.location)}</span>
+
+    </div>
+
+</div>
+
+        <div>
+            <strong>💰 Valor</strong>
             <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
-            <span>${escapeHTML(statusLabels[service.status] || service.status)}</span>
-          </div>
         </div>
-        <span class="badge ${escapeHTML(service.status)}">${escapeHTML(statusLabels[service.status] || service.status)}</span>
-      </div>
-      <div class="work-order-grid">
+
         <div>
-          <strong>Cliente/empresa</strong>
-          <span>${escapeHTML(customerName)}</span>
-          ${customerContact ? `<small>${escapeHTML(customerContact)}</small>` : ""}
+            <strong>👤 Cliente</strong>
+            <span>${escapeHTML(customerName)}</span>
+            ${customerContact ? `<small>${escapeHTML(customerContact)}</small>` : ""}
         </div>
+
         <div>
-          <strong>Data e horário</strong>
-          <span>${escapeHTML(formatDateTime(service))}</span>
+            <strong>🔧 Serviço</strong>
+            <span>${escapeHTML(service.title)}</span>
         </div>
-        <div>
-          <strong>Local</strong>
-          <span>${escapeHTML(service.location)}</span>
-          <small>${escapeHTML(service.address)}</small>
+
+        ${teamBlock(service)}
+
+    </div>
+
+    ${materialsBlock(service.materials || [])}
+
+    ${service.notes ? `
+        <div class="notes-card">
+
+            <strong>📝 Observações</strong>
+
+            <p>${escapeHTML(service.notes)}</p>
+
         </div>
-        <div>
-          <strong>Tipo de serviço</strong>
-          <span>${escapeHTML(service.title)}</span>
-        </div>
-        <div>
-          <strong>Valor do serviço</strong>
-          <span>${escapeHTML(isServicePriced(service) ? formatCurrency(servicePrice(service)) : "Aguardando preço")}</span>
-        </div>
-      </div>
-      ${teamBlock(service)}
-      ${materialsBlock(service.materials || [])}
-      ${service.notes ? `<p class="notes">${escapeHTML(service.notes)}</p>` : ""}
-      ${locationSummary("Localização de início", service.startLocation)}
-      ${locationSummary("Localização final", service.finalLocation)}
-      ${photoSummary(service.servicePhotos)}
-      ${signatureSummary(service.clientSignature)}
-      ${action}
-    </article>
-  `;
+    ` : ""}
+
+    ${locationSummary("📍 Localização inicial", service.startLocation)}
+
+    ${locationSummary("📍 Localização final", service.finalLocation)}
+
+    ${photoSummary(service.servicePhotos)}
+
+    ${signatureSummary(service.clientSignature)}
+
+    ${action}
+
+</article>
+`;
 }
 
 function renderGroup(selector, services, emptyText) {
@@ -721,28 +799,14 @@ function renderServices() {
   refreshIcons();
 }
 
-async function setServiceStatus(serviceId, action) {
+async function setServiceStatus(serviceId, action, button = null) {
+  const stopLoading = setButtonLoading(button, true);
   const endpoint = action === "start" ? "start" : "finish";
   const currentService = state.services.find((service) => service.id === serviceId);
-  if (action === "start" && !getPendingStartLocation(serviceId)) {
-    toast("Localização", "Informe a localização de início antes de iniciar.", "error");
-    return;
-  }
-  if (action === "finish" && !getPendingFinalLocation(serviceId)) {
-    toast("Localização", "Informe a localização final antes de finalizar.", "error");
-    return;
-  }
-  if (action === "start" && !getPendingBeforePhoto(serviceId)) {
-    toast("Foto", "Tire ou anexe a foto de antes antes de iniciar.", "error");
-    return;
-  }
-  if (action === "finish" && !getPendingAfterPhoto(serviceId)) {
-    toast("Foto", "Tire ou anexe a foto de depois antes de finalizar.", "error");
-    return;
-  }
   const signature = action === "finish" ? signaturePayload(serviceId) : null;
   if (action === "finish" && !signature) {
     toast("Assinatura", "Peça para o cliente assinar no campo antes de finalizar.", "error");
+    stopLoading();
     return;
   }
   const report = getReportPreference(serviceId, currentService);
@@ -773,10 +837,13 @@ async function setServiceStatus(serviceId, action) {
     toast("Serviço", action === "start" ? "Serviço iniciado." : "Serviço finalizado.");
   } catch (error) {
     toast("Serviço", error.message, "error");
+  } finally {
+    stopLoading();
   }
 }
 
-async function captureStartLocation(serviceId) {
+async function captureStartLocation(serviceId, button = null) {
+  const stopLoading = setButtonLoading(button, true);
   try {
     toast("Localização", "Buscando localização atual...");
     const position = await getBrowserPosition();
@@ -794,10 +861,13 @@ async function captureStartLocation(serviceId) {
     toast("Localização", "Localização de início capturada. Não há rastreamento contínuo.");
   } catch (error) {
     toast("Localização", error.message || "Não foi possível pegar o GPS. Digite ou cole o link da localização.", "error");
+  } finally {
+    stopLoading();
   }
 }
 
-async function captureFinalLocation(serviceId) {
+async function captureFinalLocation(serviceId, button = null) {
+  const stopLoading = setButtonLoading(button, true);
   try {
     toast("Localização", "Buscando localização final...");
     const position = await getBrowserPosition();
@@ -815,6 +885,8 @@ async function captureFinalLocation(serviceId) {
     toast("Localização", "Localização final capturada.");
   } catch (error) {
     toast("Localização", error.message || "Não foi possível pegar o GPS. Digite ou cole o link da localização.", "error");
+  } finally {
+    stopLoading();
   }
 }
 
@@ -930,6 +1002,7 @@ async function logout() {
 function bindEvents() {
   $("#employeeLoginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const stopLoading = startSubmitLoading(event);
     window.EGRuntime?.persistConnectionForm(event.currentTarget);
     const credentials = Object.fromEntries(new FormData(event.currentTarget).entries());
     delete credentials.serverUrl;
@@ -943,22 +1016,34 @@ function bindEvents() {
       await loadAll();
     } catch (error) {
       toast("Login", error.message, "error");
+    } finally {
+      stopLoading();
     }
   });
 
   $("#notificationButton").addEventListener("click", requestNotifications);
-  $("#refreshButton").addEventListener("click", loadAll);
+  $("#refreshButton").addEventListener("click", async (event) => {
+    const stopLoading = setButtonLoading(event.currentTarget, true);
+    try {
+      await loadAll();
+      toast("Atualizacao", "Dados atualizados.");
+    } catch (error) {
+      toast("Atualizacao", error.message, "error");
+    } finally {
+      stopLoading();
+    }
+  });
   $("#logoutButton").addEventListener("click", logout);
 
   document.body.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-action]");
     if (!button) return;
     if (button.dataset.action === "capture-start-location") {
-      captureStartLocation(button.dataset.id);
+      captureStartLocation(button.dataset.id, button);
       return;
     }
     if (button.dataset.action === "capture-final-location") {
-      captureFinalLocation(button.dataset.id);
+      captureFinalLocation(button.dataset.id, button);
       return;
     }
     if (button.dataset.action === "clear-signature") {
@@ -975,7 +1060,7 @@ function bindEvents() {
       renderServices();
       return;
     }
-    setServiceStatus(button.dataset.id, button.dataset.action);
+    setServiceStatus(button.dataset.id, button.dataset.action, button);
   });
 
   document.body.addEventListener("input", (event) => {
@@ -1036,3 +1121,61 @@ async function boot() {
 }
 
 boot();
+
+// ============================
+// Drawer do menu
+// ============================
+
+const menuButton = document.getElementById("employeeMenuToggle");
+const menu = document.getElementById("employeeMenu") || document.querySelector(".employee-menu");
+const menuOverlay = document.getElementById("employeeDrawerOverlay");
+
+function setEmployeeMenuOpen(open) {
+    if (!menuButton || !menu) return;
+    menu.classList.toggle("open", open);
+    menuOverlay?.classList.toggle("open", open);
+    menuButton.setAttribute("aria-expanded", String(open));
+    document.body.classList.toggle("drawer-open", open);
+}
+
+if (menuButton && menu) {
+
+    menuButton.addEventListener("click", (e) => {
+
+        e.stopPropagation();
+
+        setEmployeeMenuOpen(!menu.classList.contains("open"));
+
+    });
+
+    menuOverlay?.addEventListener("click", () => setEmployeeMenuOpen(false));
+
+    // Fecha ao clicar fora
+    document.addEventListener("click", (e) => {
+
+        if (
+            menu.classList.contains("open") &&
+            !menu.contains(e.target) &&
+            !menuButton.contains(e.target)
+        ) {
+            setEmployeeMenuOpen(false);
+        }
+
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") setEmployeeMenuOpen(false);
+    });
+
+    // Fecha ao clicar em um item do menu
+    menu.querySelectorAll("a").forEach(link => {
+
+        link.addEventListener("click", () => {
+
+            setEmployeeMenuOpen(false);
+
+        });
+
+    });
+
+}
