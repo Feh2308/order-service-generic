@@ -132,6 +132,14 @@ function isServicePriced(service) {
   return service?.priceStatus === "PRICED" && servicePrice(service) > 0;
 }
 
+function isServiceReceived(service) {
+  return isServicePriced(service) && service?.paymentStatus === "RECEIVED";
+}
+
+function isServiceReceivable(service) {
+  return isServicePriced(service) && !isServiceReceived(service);
+}
+
 function isPendingPricing(service) {
   return service?.status === "done" && !isServicePriced(service);
 }
@@ -176,6 +184,11 @@ function displayStatus(service) {
 
 function priceStatusLabel(service) {
   return isServicePriced(service) ? "PRECIFICADA" : "AGUARDANDO_PREÇO";
+}
+
+function paymentStatusLabel(service) {
+  if (!isServicePriced(service)) return "SEM PREÇO";
+  return isServiceReceived(service) ? "RECEBIDO" : "A RECEBER";
 }
 
 function formatCurrency(value) {
@@ -1386,6 +1399,31 @@ async function handlePriceSubmit(event) {
   }
 }
 
+async function receivePayment(serviceId) {
+  const service = state.services.find((item) => item.id === serviceId);
+  if (!service || !isServiceReceivable(service)) return;
+  if (!window.confirm(`Confirmar o recebimento de ${formatCurrency(servicePrice(service))} referente a ${service.code}?`)) return;
+
+  const paymentMethod = window.prompt("Forma de pagamento (opcional):", "");
+  if (paymentMethod === null) return;
+  const paymentNotes = window.prompt("Observação do pagamento (opcional):", "");
+  if (paymentNotes === null) return;
+
+  try {
+    const updated = await api(`/api/services/${serviceId}/receive-payment`, {
+      method: "POST",
+      body: { paymentMethod, paymentNotes }
+    });
+    upsertService(updated);
+    renderServices();
+    renderClientHistory();
+    await loadDashboard();
+    toast("Financeiro", `${updated.code} marcado como recebido.`);
+  } catch (error) {
+    toast("Financeiro", error.message, "error");
+  }
+}
+
 async function generateSelectedPdf() {
   if (!state.pdfRequest) return;
   const stopLoading = setButtonLoading($("#generatePdfButton"), true);
@@ -1434,12 +1472,13 @@ function actionMenuButton(action, serviceId, icon, label, extraClass = "", disab
   `;
 }
 
-function serviceActionMenu(service, { canAdminAct, canReport, needsPrice }) {
+function serviceActionMenu(service, { canEdit, canCancel, canReport, canPrice, needsPrice }) {
   if (service.status === "cancelled") {
     const cancelledActions = [
+      canEdit ? actionMenuButton("edit-service", service.id, "pencil", "Editar") : "",
       actionMenuButton("duplicate-service", service.id, "copy", "Duplicar"),
       actionMenuButton("delete-service", service.id, "trash-2", "Excluir definitivamente", "danger-menu-item")
-    ];
+    ].filter(Boolean);
 
     return `
       <details class="action-menu action-menu-cancelled">
@@ -1450,11 +1489,11 @@ function serviceActionMenu(service, { canAdminAct, canReport, needsPrice }) {
   }
 
   const actions = [
-    canAdminAct ? actionMenuButton("edit-service", service.id, "pencil", "Editar") : "",
+    canEdit ? actionMenuButton("edit-service", service.id, "pencil", "Editar") : "",
     actionMenuButton("duplicate-service", service.id, "copy", "Duplicar"),
     actionMenuButton("finish-service", service.id, "check-circle-2", "Finalizar", "", true),
-    needsPrice ? actionMenuButton("add-price", service.id, "dollar-sign", "Adicionar preço") : "",
-    canAdminAct ? actionMenuButton("cancel-service", service.id, "x-circle", "Cancelar", "danger-menu-item") : "",
+    canPrice ? actionMenuButton("add-price", service.id, "dollar-sign", needsPrice ? "Adicionar preço" : "Editar preço") : "",
+    canCancel ? actionMenuButton("cancel-service", service.id, "x-circle", "Cancelar", "danger-menu-item") : "",
     service.status === "cancelled" ? actionMenuButton("delete-service", service.id, "trash-2", "Excluir definitivamente", "danger-menu-item") : "",
     canReport ? actionMenuButton("open-report", service.id, "printer", "Imprimir / PDF") : "",
     canReport ? actionMenuButton("send-report", service.id, "mail", "Enviar ao cliente") : "",
@@ -1518,7 +1557,9 @@ function serviceCard(service) {
   const workflowLabel = workflowStatusLabel(service);
   const showWorkflowBadge = service.status !== "cancelled";
 
-  const canAdminAct =
+  const canEdit = true;
+
+  const canCancel =
     !["done","cancelled"].includes(service.status);
 
   const canReport =
@@ -1527,6 +1568,9 @@ function serviceCard(service) {
 
   const needsPrice =
     isPendingPricing(service);
+
+  const canPrice =
+    service.status === "done";
 
   return `
 
@@ -1561,8 +1605,10 @@ function serviceCard(service) {
             }
 
             ${serviceActionMenu(service,{
-                canAdminAct,
+                canEdit,
+                canCancel,
                 canReport,
+                canPrice,
                 needsPrice
             })}
 
@@ -1930,6 +1976,7 @@ function clientHistoryFilters() {
   return {
     clientId: $("#historyClientFilter")?.value || "",
     status: $("#historyStatusFilter")?.value || "all",
+    paymentStatus: $("#historyPaymentFilter")?.value || "all",
     dateFrom: $("#historyDateFromFilter")?.value || "",
     dateTo: $("#historyDateToFilter")?.value || ""
   };
@@ -1939,6 +1986,12 @@ function clientHistoryServices(filters = clientHistoryFilters()) {
   return state.services
     .filter((service) => !filters.clientId || service.clientId === filters.clientId)
     .filter((service) => serviceMatchesListFilter(service, filters.status))
+    .filter((service) => {
+      if (filters.paymentStatus === "received") return isServiceReceived(service);
+      if (filters.paymentStatus === "receivable") return isServiceReceivable(service);
+      if (filters.paymentStatus === "unpriced") return !isServicePriced(service);
+      return true;
+    })
     .filter((service) => !filters.dateFrom || service.date >= filters.dateFrom)
     .filter((service) => !filters.dateTo || service.date <= filters.dateTo)
     .slice()
@@ -2003,6 +2056,9 @@ function clientHistoryRow(service) {
   const responsible = serviceResponsibleNames(service);
   const location = service.location || service.address || "Local não informado";
   const financeNotes = service.financeNotes || "";
+  const received = isServiceReceived(service);
+  const receivable = isServiceReceivable(service);
+  const paymentNotes = service.paymentNotes || "";
   return `
     <article class="history-card ${priced ? "history-priced" : "history-pending"}">
       <div class="history-card-main">
@@ -2017,14 +2073,20 @@ function clientHistoryRow(service) {
           <span><i data-lucide="users-round"></i>${escapeHTML(responsible)}</span>
         </div>
         ${financeNotes ? `<p class="history-note">${escapeHTML(financeNotes)}</p>` : ""}
+        ${paymentNotes ? `<p class="history-note">Pagamento: ${escapeHTML(paymentNotes)}</p>` : ""}
       </div>
       <div class="history-card-side">
         <span class="badge workflow-badge ${escapeHTML(statusClass)}">${escapeHTML(statusLabel)}</span>
+        ${priced ? `<span class="badge payment-badge ${received ? "received" : "receivable"}">${escapeHTML(paymentStatusLabel(service))}</span>` : ""}
         <strong class="history-value ${priced ? "" : "muted"}">${escapeHTML(valueLabel)}</strong>
-        <small>${priced ? "Valor lançado" : "Aguardando lançamento"}</small>
+        <small>${received ? `Recebido em ${escapeHTML(shortDate(service.receivedAt) || "agora")}` : receivable ? "Pendente de recebimento" : "Aguardando lançamento"}</small>
         ${
           priced
-            ? `<button class="ghost-button" type="button" data-action="history-open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>PDF da OS</button>`
+            ? `<div class="history-card-actions">
+                <button class="ghost-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Editar preço</button>
+                ${receivable ? `<button class="primary-button" type="button" data-action="receive-payment" data-id="${escapeHTML(service.id)}"><i data-lucide="badge-check"></i>Marcar recebido</button>` : ""}
+                <button class="ghost-button" type="button" data-action="history-open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>PDF da OS</button>
+              </div>`
             : `<span class="history-unavailable">PDF após preço</span>`
         }
       </div>
@@ -2060,7 +2122,11 @@ function renderClientHistory() {
   const services = clientHistoryServices(filters);
   const pricedServices = services.filter(isServicePriced);
   const waitingServices = services.filter((service) => !isServicePriced(service));
+  const receivableServices = services.filter(isServiceReceivable);
+  const receivedServices = services.filter(isServiceReceived);
   const totalValue = sumServiceValues(services);
+  const receivableValue = sumServiceValues(receivableServices);
+  const receivedValue = sumServiceValues(receivedServices);
   const sortedByDate = services.slice().sort((a, b) => serviceTimestamp(a) - serviceTimestamp(b));
   const firstService = sortedByDate[0];
   const lastService = sortedByDate[sortedByDate.length - 1];
@@ -2083,7 +2149,15 @@ function renderClientHistory() {
       <strong>${pricedServices.length}</strong>
     </section>
     <section class="history-stat">
-      <span>Soma dos valores</span>
+      <span>A receber</span>
+      <strong>${escapeHTML(formatCurrency(receivableValue))}</strong>
+    </section>
+    <section class="history-stat">
+      <span>Recebido</span>
+      <strong>${escapeHTML(formatCurrency(receivedValue))}</strong>
+    </section>
+    <section class="history-stat">
+      <span>Total precificado</span>
       <strong>${escapeHTML(formatCurrency(totalValue))}</strong>
     </section>
     <section class="history-stat">
@@ -2097,7 +2171,7 @@ function renderClientHistory() {
   `;
 
   list.innerHTML = services.length
-    ? `${historyGroup("Serviços com valor lançado", pricedServices)}${historyGroup("Aguardando preço", waitingServices)}`
+    ? `${historyGroup("A receber", receivableServices)}${historyGroup("Recebidos", receivedServices)}${historyGroup("Aguardando preço", waitingServices)}`
     : `<div class="empty">Nenhum serviço encontrado para os filtros.</div>`;
   refreshIcons();
 }
@@ -2842,12 +2916,13 @@ function bindEvents() {
     $("#dateToFilter").value = "";
     renderServices();
   });
-  ["historyClientFilter", "historyStatusFilter", "historyDateFromFilter", "historyDateToFilter"].forEach((id) => {
+  ["historyClientFilter", "historyStatusFilter", "historyPaymentFilter", "historyDateFromFilter", "historyDateToFilter"].forEach((id) => {
     $(`#${id}`).addEventListener("change", renderClientHistory);
   });
   $("#clearHistoryFiltersButton").addEventListener("click", () => {
     $("#historyClientFilter").value = "";
     $("#historyStatusFilter").value = "all";
+    $("#historyPaymentFilter").value = "all";
     $("#historyDateFromFilter").value = "";
     $("#historyDateToFilter").value = "";
     renderClientHistory();
@@ -2911,6 +2986,9 @@ function bindEvents() {
     if (!button) return;
     if (button.dataset.action === "history-open-report") {
       openPdfOptions("service", button.dataset.id);
+    }
+    if (button.dataset.action === "receive-payment") {
+      receivePayment(button.dataset.id);
     }
   });
 

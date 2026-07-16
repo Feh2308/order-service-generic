@@ -318,8 +318,8 @@
           <section class="panel client-history-panel">
             <div class="panel-header">
               <div>
-                <h2>Histórico financeiro por cliente</h2>
-                <p>Consulte serviços por cliente, período e status com soma automática dos valores.</p>
+                <h2>Central do cliente</h2>
+                <p>Consulte atendimentos, valores a receber e pagamentos confirmados de cada cliente.</p>
               </div>
             </div>
             <div class="panel-body filter-grid">
@@ -348,6 +348,15 @@
                   <option value="sent_client">Enviados ao cliente</option>
                   <option value="done">Finalizados</option>
                   <option value="cancelled">Cancelados</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Financeiro</span>
+                <select id="historyPaymentFilter" class="input">
+                  <option value="all">Todos</option>
+                  <option value="receivable">A receber</option>
+                  <option value="received">Recebidos</option>
+                  <option value="unpriced">Sem preço</option>
                 </select>
               </label>
               <button id="clearHistoryFiltersButton" class="ghost-button filter-clear-button" type="button"><i data-lucide="filter-x"></i>Limpar filtros</button>
@@ -758,6 +767,6 @@
     <script type="module" src="/env.js?v=20260620-ordem-cache-fix"></script>
     <script type="module" src="/assets/runtime.js?v=20260620-ordem-cache-fix"></script>
     <script type="module" src="/assets/icons.js?v=20260620-ordem-cache-fix"></script>
-    <script type="module" src="/assets/admin.js?v=20260711-cancelled-menu-final"></script>
+    <script type="module" src="/assets/admin.js?v=20260716-admin-edit-price"></script>
   </body>
 </html>

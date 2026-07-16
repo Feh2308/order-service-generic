@@ -3,7 +3,6 @@ const state = {
   user: null,
   socket: null,
   services: [],
-  teams: [],
   pendingStartLocations: loadPendingStartLocations(),
   pendingFinalLocations: loadPendingFinalLocations(),
   pendingBeforePhotos: loadPendingPhotos("egPendingBeforePhotos"),
@@ -384,7 +383,6 @@ function connectSocket() {
   state.socket.on("service:created", ({ service, message }) => {
     upsertService(service);
     renderServices();
-    renderTeams();
     toast("Novo serviço", message || `${service.code} enviado.`);
     browserNotify("Novo serviço", `${service.code} - ${service.title}`);
   });
@@ -392,20 +390,13 @@ function connectSocket() {
   state.socket.on("service:updated", ({ service, message }) => {
     upsertService(service);
     renderServices();
-    renderTeams();
     toast("Serviço atualizado", message || `${service.code} atualizado.`);
     browserNotify("Serviço atualizado", message || `${service.code} atualizado.`);
   });
   state.socket.on("service:deleted", ({ service, message }) => {
     removeService(service?.id);
     renderServices();
-    renderTeams();
     toast("Serviço removido", message || `${service?.code || "Serviço"} removido.`);
-  });
-  state.socket.on("team:updated", async ({ message }) => {
-    await loadAll();
-    toast("Equipe", message || "Equipe atualizada.");
-    browserNotify("Equipe", message || "Equipe atualizada.");
   });
 }
 
@@ -434,14 +425,8 @@ async function loadServices() {
   renderServices();
 }
 
-async function loadTeams() {
-  state.teams = await api("/api/my-teams");
-  renderTeams();
-}
-
 async function loadAll() {
-  await Promise.all([loadServices(), loadTeams()]);
-  renderTeams();
+  await loadServices();
 }
 
 function updateCounts(groups) {
@@ -453,35 +438,19 @@ function updateCounts(groups) {
   $("#doneBadge").textContent = groups.done.length;
 }
 
-function renderTeams() {
-  const list = $("#employeeTeamList");
-  if (!list) return;
-  list.innerHTML = state.teams.length
-    ? state.teams
-        .map((team) => {
-          const leaderName = team.leader?.name || "Sem líder";
-          const isLeader = team.leaderId === state.user?.id;
-          const teammates = (team.employees || []).filter((employee) => employee.id !== state.user?.id);
-          const activeServices = state.services.filter((service) => service.teamId === team.id && service.status !== "cancelled").length;
-          return `
-            <div class="employee-row">
-              <div>
-                <strong>${escapeHTML(team.name)}</strong>
-                <span>Líder: ${escapeHTML(leaderName)} - ${isLeader ? "você é responsável" : "membro da equipe"}</span>
-                <span>${activeServices} serviço(s) vinculados</span>
-                <div class="team-member-list">
-                  ${teammates.length
-                    ? teammates.map((employee) => `<span class="badge scheduled">${escapeHTML(employee.name)}</span>`).join("")
-                    : `<span class="badge done">Sem companheiros</span>`}
-                </div>
-              </div>
-              <span class="badge ${isLeader ? "done" : "scheduled"}">${isLeader ? "Líder" : "Membro"}</span>
-            </div>
-          `;
-        })
-        .join("")
-    : `<div class="empty">Você ainda não está em uma equipe.</div>`;
-  refreshIcons();
+function renderPersonalSummary(services) {
+  const summary = $("#employeePersonalSummary");
+  if (!summary) return;
+  const completedByMe = services.filter((service) => service.status === "done" && service.finishedBy === state.user?.id);
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const completedThisMonth = completedByMe.filter((service) => String(service.finishedAt || service.updatedAt || "").slice(0, 7) === currentMonth);
+  const latest = completedByMe.slice().sort((a, b) => String(b.finishedAt || "").localeCompare(String(a.finishedAt || "")))[0];
+
+  summary.innerHTML = `
+    <section class="history-stat"><span>Serviços concluídos por mim</span><strong>${completedByMe.length}</strong></section>
+    <section class="history-stat"><span>Concluídos neste mês</span><strong>${completedThisMonth.length}</strong></section>
+    <section class="history-stat"><span>Último atendimento</span><strong>${escapeHTML(latest ? `${latest.code} - ${shortDate(latest.finishedAt)}` : "-")}</strong></section>
+  `;
 }
 
 function materialsBlock(materials = []) {
@@ -550,33 +519,6 @@ function photoSummary(servicePhotos = {}) {
           )
           .join("")}
       </div>
-    </div>
-  `;
-}
-
-function teamBlock(service) {
-  if (!service.team) return "";
-  const leaderName = service.team.leader?.name || "Sem líder";
-  const teammates = (service.team.employees || [])
-    .filter((employee) => employee.id !== state.user?.id)
-    .map((employee) => employee.name)
-    .join(", ");
-  return `
-    <div class="materials-summary team-summary">
-      <strong>Equipe: ${escapeHTML(service.team.name)}</strong>
-      <span>Líder responsável: ${escapeHTML(leaderName)}</span>
-      <span>Companheiros: ${escapeHTML(teammates || "Sem companheiros")}</span>
-    </div>
-  `;
-}
-
-function leaderProtocolNotice(service) {
-  if (!service.team || service.team.leaderId === state.user?.id) return "";
-  const leaderName = service.team.leader?.name || "líder da equipe";
-  return `
-    <div class="location-summary">
-      <strong>Responsável pelo protocolo</strong>
-      <span>${escapeHTML(leaderName)} inicia e finaliza este serviço pela equipe.</span>
     </div>
   `;
 }
@@ -670,14 +612,13 @@ function finishControls(service) {
 function serviceCard(service) {
   const customerName = service.client?.name || service.customer || "Cliente não informado";
   const customerContact = service.client?.contact ? `Contato: ${service.client.contact}` : "";
-  const protocolLocked = service.team && service.team.leaderId !== state.user?.id && ["scheduled", "in_progress"].includes(service.status);
-  const action = protocolLocked
-    ? leaderProtocolNotice(service)
-    : service.status === "scheduled"
-      ? startControls(service)
-      : service.status === "in_progress"
-        ? finishControls(service)
-        : "";
+  const action = service.status === "scheduled"
+    ? service.canStart === false
+      ? `<div class="location-summary"><strong>Aguardando responsável</strong><span>Este serviço será iniciado pelo responsável designado.</span></div>`
+      : startControls(service)
+    : service.status === "in_progress"
+      ? finishControls(service)
+      : "";
 
   return `
 <article class="service-card work-order-card">
@@ -742,8 +683,6 @@ function serviceCard(service) {
             <span>${escapeHTML(service.title)}</span>
         </div>
 
-        ${teamBlock(service)}
-
     </div>
 
     ${materialsBlock(service.materials || [])}
@@ -790,6 +729,7 @@ function renderServices() {
   };
 
   updateCounts(groups);
+  renderPersonalSummary(activeServices);
   renderGroup("#scheduledList", groups.scheduled, "Nenhum serviço agendado.");
   renderGroup("#progressList", groups.in_progress, "Nenhum serviço em andamento.");
   renderGroup("#doneList", groups.done, "Nenhum serviço finalizado.");
@@ -833,7 +773,6 @@ async function setServiceStatus(serviceId, action, button = null) {
     }
     upsertService(service);
     renderServices();
-    renderTeams();
     toast("Serviço", action === "start" ? "Serviço iniciado." : "Serviço finalizado.");
   } catch (error) {
     toast("Serviço", error.message, "error");

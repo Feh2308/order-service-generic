@@ -73,7 +73,6 @@
           class="employee-menu"
           aria-label="Menu do funcionário">
           <a class="employee-menu-button" href="#employeeOverview"><i data-lucide="layout-dashboard"></i>Resumo</a>
-          <a class="employee-menu-button" href="#employeeTeams"><i data-lucide="users-round"></i>Equipes</a>
           <a class="employee-menu-button" href="#scheduledSection"><i data-lucide="calendar-clock"></i>Agendados</a>
           <a class="employee-menu-button" href="#progressSection"><i data-lucide="play-circle"></i>Iniciados</a>
           <a class="employee-menu-button" href="#doneSection"><i data-lucide="check-circle-2"></i>Finalizados</a>
@@ -84,7 +83,7 @@
         <div id="employeeOverview" class="employee-summary anchor-target">
           <section class="summary-lead">
             <h1>Meus serviços</h1>
-            <p>Receba a agenda, inicie ao chegar e finalize quando concluir.</p>
+            <p>Veja apenas os seus atendimentos e atualize o serviço quando concluir.</p>
           </section>
           <section class="stat">
             <span>Agendados</span>
@@ -100,14 +99,14 @@
           </section>
         </div>
 
-        <section id="employeeTeams" class="panel employee-team-panel anchor-target">
+        <section class="panel employee-personal-summary anchor-target">
           <div class="panel-header">
             <div>
-              <h2>Minhas equipes</h2>
-              <p>Veja o líder, os companheiros e os serviços vinculados à equipe.</p>
+              <h2>Meu resumo</h2>
+              <p>Resumo dos serviços prestados por você.</p>
             </div>
           </div>
-          <div id="employeeTeamList" class="panel-body list"></div>
+          <div id="employeePersonalSummary" class="panel-body history-summary"></div>
         </section>
 
         <div class="employee-sections">

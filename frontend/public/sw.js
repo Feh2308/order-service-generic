@@ -1,4 +1,4 @@
-const APP_VERSION = "20260713-optional-proof-single-photo";
+const APP_VERSION = "20260716-admin-edit-price";
 const CACHE_NAME = `eg-services-${APP_VERSION}`;
 const versioned = (path) => `${path}?v=${APP_VERSION}`;
 const ASSETS = [

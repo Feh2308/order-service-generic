@@ -171,6 +171,14 @@ function normalizeLoadedData(loaded) {
     if (!("financeNotes" in service)) service.financeNotes = "";
     if (!("pricedAt" in service)) service.pricedAt = service.priceStatus === "PRICED" ? service.updatedAt || service.finishedAt || null : null;
     if (!("pricedBy" in service)) service.pricedBy = null;
+    if (!["PENDING", "RECEIVED", "NOT_APPLICABLE"].includes(service.paymentStatus)) {
+      service.paymentStatus = service.priceStatus === "PRICED" ? "PENDING" : "NOT_APPLICABLE";
+    }
+    if (service.priceStatus !== "PRICED") service.paymentStatus = "NOT_APPLICABLE";
+    if (!("receivedAt" in service)) service.receivedAt = null;
+    if (!("receivedBy" in service)) service.receivedBy = null;
+    if (!("paymentMethod" in service)) service.paymentMethod = "";
+    if (!("paymentNotes" in service)) service.paymentNotes = "";
     if (!("sentToClientAt" in service)) service.sentToClientAt = null;
     if (!("sentToClientBy" in service)) service.sentToClientBy = null;
     if (!("sentToClientChannel" in service)) service.sentToClientChannel = null;
@@ -353,8 +361,30 @@ function publicService(service) {
   };
 }
 
+function employeeService(service, employeeId) {
+  const result = publicService(service);
+  const team = service.teamId ? db.teams.find((item) => item.id === service.teamId) : null;
+
+  delete result.employeeIds;
+  delete result.employees;
+  delete result.teamId;
+  delete result.team;
+  delete result.createdBy;
+  delete result.pricedBy;
+  delete result.receivedBy;
+  delete result.sentToClientBy;
+
+  result.canStart = !team || team.leaderId === employeeId;
+  result.canFinish = service.employeeIds.includes(employeeId) || Boolean(team?.employeeIds?.includes(employeeId));
+  return result;
+}
+
 function isServicePriced(service) {
   return service.priceStatus === "PRICED" && Number(service.price) > 0;
+}
+
+function isServiceReceived(service) {
+  return isServicePriced(service) && service.paymentStatus === "RECEIVED";
 }
 
 function isServiceWaitingPrice(service) {
@@ -728,7 +758,7 @@ function listServicesFor(user, filters = {}) {
     .filter((service) => user.role === "admin" ? serviceMatchesFilters(service, filters) : true)
     .slice()
     .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
-    .map(publicService);
+    .map((service) => user.role === "admin" ? publicService(service) : employeeService(service, user.id));
 }
 
 function normalizeServiceMaterials(items) {
@@ -778,10 +808,15 @@ async function createService(payload, adminId) {
     notes: normalizeText(payload.notes),
     price: 0,
     priceStatus: "PENDING",
+    paymentStatus: "NOT_APPLICABLE",
     workflowStatus: "",
     financeNotes: "",
     pricedAt: null,
     pricedBy: null,
+    receivedAt: null,
+    receivedBy: null,
+    paymentMethod: "",
+    paymentNotes: "",
     materials,
     employeeIds,
     status: "scheduled",
@@ -815,7 +850,6 @@ async function createService(payload, adminId) {
 async function updateService(serviceId, payload) {
   const service = db.services.find((item) => item.id === serviceId);
   if (!service) return null;
-  if (service.status === "done") return { locked: true, service: publicService(service) };
 
   const fields = ["title", "customer", "date", "time", "location", "address", "notes"];
   fields.forEach((field) => {
@@ -850,7 +884,7 @@ async function cancelService(serviceId) {
   return publicService(service);
 }
 
-async function deleteCancelledService(serviceId, adminId) {
+async function deleteCancelledService(serviceId) {
   const index = db.services.findIndex((item) => item.id === serviceId);
   if (index < 0) return null;
   const service = db.services[index];
@@ -858,12 +892,8 @@ async function deleteCancelledService(serviceId, adminId) {
 
   const deletedService = publicService(service);
   db.services.splice(index, 1);
+  db.events = db.events.filter((event) => event?.details?.serviceId !== serviceId);
   await save(db);
-  await addEvent("service.deleted", `Serviço ${service.code} excluído definitivamente.`, {
-    serviceId: service.id,
-    adminId,
-    previousStatus: service.status
-  });
   return deletedService;
 }
 
@@ -998,6 +1028,7 @@ async function finishService(serviceId, employeeId, payload = {}) {
   if (service.priceStatus !== "PRICED") {
     service.price = 0;
     service.priceStatus = "PENDING";
+    service.paymentStatus = "NOT_APPLICABLE";
     service.workflowStatus = WORKFLOW_STATUS.WAITING_PRICE;
     service.financeNotes = "";
     service.pricedAt = null;
@@ -1029,6 +1060,7 @@ async function priceService(serviceId, adminId, payload = {}) {
   service.price = price;
   service.priceStatus = "PRICED";
   service.workflowStatus = WORKFLOW_STATUS.PRICED;
+  if (service.paymentStatus !== "RECEIVED") service.paymentStatus = "PENDING";
   service.financeNotes = normalizeText(payload.financeNotes);
   service.pricedAt = now();
   service.pricedBy = adminId;
@@ -1039,6 +1071,29 @@ async function priceService(serviceId, adminId, payload = {}) {
     serviceId: service.id,
     adminId,
     price
+  });
+  return publicService(service);
+}
+
+async function receiveServicePayment(serviceId, adminId, payload = {}) {
+  const service = db.services.find((item) => item.id === serviceId);
+  if (!service) return null;
+  if (!isServicePriced(service)) return { invalidStatus: true, service: publicService(service) };
+  if (isServiceReceived(service)) return { alreadyReceived: true, service: publicService(service) };
+
+  service.paymentStatus = "RECEIVED";
+  service.receivedAt = now();
+  service.receivedBy = adminId;
+  service.paymentMethod = normalizeText(payload.paymentMethod);
+  service.paymentNotes = normalizeText(payload.paymentNotes);
+  service.updatedAt = now();
+  await save(db);
+
+  await addEvent("service.payment_received", `Pagamento do serviço ${service.code} confirmado.`, {
+    serviceId: service.id,
+    adminId,
+    price: service.price,
+    paymentMethod: service.paymentMethod
   });
   return publicService(service);
 }
@@ -1077,6 +1132,7 @@ module.exports = {
   publicMaterial,
   publicTeam,
   publicService,
+  employeeService,
   dashboard,
   findAdminByEmail,
   updateAdminAccount,
@@ -1103,6 +1159,7 @@ module.exports = {
   startService,
   finishService,
   priceService,
+  receiveServicePayment,
   markServiceSentToClient,
   workflowStatusFor,
   get db() {

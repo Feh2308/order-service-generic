@@ -184,7 +184,10 @@ function broadcastService(eventName, service, message, previousEmployeeIds = [])
   io.to("admins").emit(eventName, { service, message });
   const employeeIds = new Set([...(service.employeeIds || []), ...previousEmployeeIds]);
   employeeIds.forEach((employeeId) => {
-    io.to(`employee:${employeeId}`).emit(eventName, { service, message });
+    io.to(`employee:${employeeId}`).emit(eventName, {
+      service: store.employeeService(service, employeeId),
+      message
+    });
   });
 }
 
@@ -541,7 +544,7 @@ app.post("/api/services/:id/cancel", auth("admin"), asyncRoute(async (req, res) 
 }));
 
 app.delete("/api/services/:id", auth("admin"), asyncRoute(async (req, res) => {
-  const result = await store.deleteCancelledService(req.params.id, req.user.id);
+  const result = await store.deleteCancelledService(req.params.id);
   if (!result) return res.status(404).json({ error: "Serviço não encontrado." });
   if (result.locked) {
     return res.status(409).json({ error: "Apenas serviços cancelados podem ser excluídos definitivamente.", service: result.service });
@@ -561,7 +564,7 @@ app.post("/api/services/:id/start", auth("employee"), asyncRoute(async (req, res
 
   broadcastService("service:updated", result, `${req.user.name} iniciou ${result.code}.`);
   emitDashboard();
-  res.json(result);
+  res.json(store.employeeService(result, req.user.id));
 }));
 
 app.post("/api/services/:id/finish", auth("employee"), asyncRoute(async (req, res) => {
@@ -575,7 +578,7 @@ app.post("/api/services/:id/finish", auth("employee"), asyncRoute(async (req, re
 
   broadcastService("service:updated", result, `${req.user.name} finalizou ${result.code}.`);
   emitDashboard();
-  res.json(result);
+  res.json(store.employeeService(result, req.user.id));
 }));
 
 app.patch("/api/services/:id/price", auth("admin"), asyncRoute(async (req, res) => {
@@ -585,6 +588,21 @@ app.patch("/api/services/:id/price", auth("admin"), asyncRoute(async (req, res) 
   if (result.invalidPrice) return res.status(400).json({ error: "Informe um valor maior que zero.", service: result.service });
 
   broadcastService("service:updated", result, `Preço do serviço ${result.code} definido.`);
+  emitDashboard();
+  res.json(result);
+}));
+
+app.post("/api/services/:id/receive-payment", auth("admin"), asyncRoute(async (req, res) => {
+  const result = await store.receiveServicePayment(req.params.id, req.user.id, req.body || {});
+  if (!result) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (result.invalidStatus) {
+    return res.status(409).json({ error: "Defina o preço antes de confirmar o recebimento.", service: result.service });
+  }
+  if (result.alreadyReceived) {
+    return res.status(409).json({ error: "Este serviço já está marcado como recebido.", service: result.service });
+  }
+
+  broadcastService("service:updated", result, `Pagamento do serviço ${result.code} confirmado.`);
   emitDashboard();
   res.json(result);
 }));

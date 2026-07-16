@@ -6962,6 +6962,24 @@ min-width:0;
 justify-self:end;
 }
 
+.payment-badge.receivable{
+background:#fff7ed;
+color:#c2410c;
+border:1px solid #fed7aa;
+}
+
+.payment-badge.received{
+background:#ecfdf5;
+color:#047857;
+border:1px solid #a7f3d0;
+}
+
+.history-card-actions{
+display:grid;
+gap:8px;
+justify-items:end;
+}
+
 .history-value{
 font-size:20px;
 line-height:1.1;
@@ -7035,6 +7053,11 @@ text-align:left;
 
 .history-card-side .badge{
 justify-self:start;
+}
+
+.history-card-actions{
+justify-items:stretch;
+width:100%;
 }
 
 .history-card-side button{
