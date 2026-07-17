@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 const APP_VERSION = "20260716-admin-edit-price";
+=======
+const APP_VERSION = "20260717-admin-edit-price-click";
+>>>>>>> 6dee8d3 (editar preço)
 const CACHE_NAME = `eg-services-${APP_VERSION}`;
 const versioned = (path) => `${path}?v=${APP_VERSION}`;
 const ASSETS = [

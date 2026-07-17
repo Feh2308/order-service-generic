@@ -2990,6 +2990,12 @@ function bindEvents() {
     if (button.dataset.action === "receive-payment") {
       receivePayment(button.dataset.id);
     }
+<<<<<<< HEAD
+=======
+    if (button.dataset.action === "add-price") {
+      openPriceModal(button.dataset.id);
+    }
+>>>>>>> 6dee8d3 (editar preço)
   });
 
   $("#pendingPricingList").addEventListener("click", (event) => {
