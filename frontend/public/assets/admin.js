@@ -2083,7 +2083,6 @@ function clientHistoryRow(service) {
         ${
           priced
             ? `<div class="history-card-actions">
-                <button class="ghost-button" type="button" data-action="add-price" data-id="${escapeHTML(service.id)}"><i data-lucide="dollar-sign"></i>Editar preço</button>
                 ${receivable ? `<button class="primary-button" type="button" data-action="receive-payment" data-id="${escapeHTML(service.id)}"><i data-lucide="badge-check"></i>Marcar recebido</button>` : ""}
                 <button class="ghost-button" type="button" data-action="history-open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>PDF da OS</button>
               </div>`
@@ -2989,6 +2988,10 @@ function bindEvents() {
     }
     if (button.dataset.action === "receive-payment") {
       receivePayment(button.dataset.id);
+    }
+
+    if (button.dataset.action === "add-price") {
+      openPriceModal(button.dataset.id);
     }
   });
 
