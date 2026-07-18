@@ -44,6 +44,10 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
+  if (request.method !== "GET") {
+  return;
+}
+
   if (request.url.includes("/socket.io/")) return;
 
   if (request.method === "GET" && request.url.includes("/api/")) {
