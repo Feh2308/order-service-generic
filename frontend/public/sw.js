@@ -6,7 +6,6 @@ const ASSETS = [
   "/index.html",
   "/admin/",
   "/funcionario/",
-  versioned("/env.js"),
   versioned("/assets/Admin.css"),
   versioned("/assets/Funcionario.css"),
   versioned("/assets/runtime.js"),
