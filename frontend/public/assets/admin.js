@@ -2989,7 +2989,10 @@ function bindEvents() {
     if (button.dataset.action === "receive-payment") {
       receivePayment(button.dataset.id);
     }
+<<<<<<< HEAD
 
+=======
+>>>>>>> efeb89f (cache corrigido)
     if (button.dataset.action === "add-price") {
       openPriceModal(button.dataset.id);
     }

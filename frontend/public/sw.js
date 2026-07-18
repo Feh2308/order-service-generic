@@ -1,4 +1,5 @@
 const APP_VERSION = "20260718-price-menu-only";
+const APP_VERSION = "20260718-cache-safe-api-url";
 const CACHE_NAME = `eg-services-${APP_VERSION}`;
 const versioned = (path) => `${path}?v=${APP_VERSION}`;
 const ASSETS = [
@@ -21,7 +22,17 @@ const ASSETS = [
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        ASSETS.map((asset) =>
+          cache.add(asset).catch((error) => {
+            console.warn("Falha ao salvar asset no cache", asset, error);
+          })
+        )
+      )
+    )
+  );
 });
 
 self.addEventListener("activate", (event) => {
