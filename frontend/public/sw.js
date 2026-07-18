@@ -1,4 +1,3 @@
-const APP_VERSION = "20260718-price-menu-only";
 const APP_VERSION = "20260718-cache-safe-api-url";
 const CACHE_NAME = `eg-services-${APP_VERSION}`;
 const versioned = (path) => `${path}?v=${APP_VERSION}`;
