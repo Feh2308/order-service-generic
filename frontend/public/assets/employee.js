@@ -441,7 +441,7 @@ function updateCounts(groups) {
 function renderPersonalSummary(services) {
   const summary = $("#employeePersonalSummary");
   if (!summary) return;
-  const completedByMe = services.filter((service) => service.status === "done" && service.finishedBy === state.user?.id);
+  const completedByMe = services.filter((service) => service.status === "done" && service.finishedByMe);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const completedThisMonth = completedByMe.filter((service) => String(service.finishedAt || service.updatedAt || "").slice(0, 7) === currentMonth);
   const latest = completedByMe.slice().sort((a, b) => String(b.finishedAt || "").localeCompare(String(a.finishedAt || "")))[0];
@@ -609,6 +609,20 @@ function finishControls(service) {
   `;
 }
 
+function updateControls(service) {
+  return `
+    <div class="service-update-box">
+      <label class="field">
+        <span>Atualização do serviço</span>
+        <textarea class="input" rows="3" data-service-update-input data-id="${escapeHTML(service.id)}" placeholder="Descreva mudanças, imprevistos ou informações importantes para o administrador."></textarea>
+      </label>
+      <div class="row-actions">
+        <button class="ghost-button" type="button" data-action="save-service-update" data-id="${escapeHTML(service.id)}"><i data-lucide="message-square-plus"></i>Registrar atualização</button>
+      </div>
+    </div>
+  `;
+}
+
 function serviceCard(service) {
   const customerName = service.client?.name || service.customer || "Cliente não informado";
   const customerContact = service.client?.contact ? `Contato: ${service.client.contact}` : "";
@@ -705,6 +719,8 @@ function serviceCard(service) {
 
     ${signatureSummary(service.clientSignature)}
 
+    ${service.status !== "done" && service.status !== "cancelled" ? updateControls(service) : ""}
+
     ${action}
 
 </article>
@@ -776,6 +792,30 @@ async function setServiceStatus(serviceId, action, button = null) {
     toast("Serviço", action === "start" ? "Serviço iniciado." : "Serviço finalizado.");
   } catch (error) {
     toast("Serviço", error.message, "error");
+  } finally {
+    stopLoading();
+  }
+}
+
+async function saveServiceUpdate(serviceId, button = null) {
+  const input = document.querySelector(`[data-service-update-input][data-id="${CSS.escape(serviceId)}"]`);
+  const description = input?.value?.trim() || "";
+  if (!description) {
+    toast("Atualização", "Descreva a alteração antes de salvar.", "error");
+    return;
+  }
+
+  const stopLoading = setButtonLoading(button, true);
+  try {
+    const service = await api(`/api/services/${serviceId}/updates`, {
+      method: "POST",
+      body: { description }
+    });
+    upsertService(service);
+    renderServices();
+    toast("Atualização", "Alteração registrada para o administrador.");
+  } catch (error) {
+    toast("Atualização", error.message, "error");
   } finally {
     stopLoading();
   }
@@ -997,6 +1037,10 @@ function bindEvents() {
     if (button.dataset.action === "clear-after-photo") {
       setPendingAfterPhoto(button.dataset.id, null);
       renderServices();
+      return;
+    }
+    if (button.dataset.action === "save-service-update") {
+      saveServiceUpdate(button.dataset.id, button);
       return;
     }
     setServiceStatus(button.dataset.id, button.dataset.action, button);

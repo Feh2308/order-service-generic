@@ -184,6 +184,7 @@ function normalizeLoadedData(loaded) {
     if (!("sentToClientChannel" in service)) service.sentToClientChannel = null;
     service.workflowStatus = workflowStatusFor(service);
     if (!Array.isArray(service.materials)) service.materials = [];
+    if (!Array.isArray(service.serviceUpdates)) service.serviceUpdates = [];
     if (!("startLocation" in service)) service.startLocation = null;
     if (!("finalLocation" in service)) service.finalLocation = null;
     if (!("clientSignature" in service)) service.clientSignature = null;
@@ -373,6 +374,17 @@ function employeeService(service, employeeId) {
   delete result.pricedBy;
   delete result.receivedBy;
   delete result.sentToClientBy;
+  delete result.startedBy;
+  delete result.finishedBy;
+
+  result.finishedByMe = service.finishedBy === employeeId;
+  result.serviceUpdates = (service.serviceUpdates || [])
+    .filter((update) => update.employeeId === employeeId)
+    .map((update) => ({
+      id: update.id,
+      description: update.description,
+      createdAt: update.createdAt
+    }));
 
   result.canStart = !team || team.leaderId === employeeId;
   result.canFinish = service.employeeIds.includes(employeeId) || Boolean(team?.employeeIds?.includes(employeeId));
@@ -835,6 +847,7 @@ async function createService(payload, adminId) {
       after: null
     },
     reportPreference: null,
+    serviceUpdates: [],
     cancelledAt: null
   };
 
@@ -1049,6 +1062,41 @@ async function finishService(serviceId, employeeId, payload = {}) {
   return publicService(service);
 }
 
+async function addServiceUpdate(serviceId, employeeId, payload = {}) {
+  const service = db.services.find((item) => item.id === serviceId);
+  if (!service) return null;
+
+  const team = service.teamId ? db.teams.find((item) => item.id === service.teamId) : null;
+  const isAssignedEmployee = service.employeeIds.includes(employeeId);
+  const isTeamMember = Boolean(team?.employeeIds?.includes(employeeId));
+  if (!isAssignedEmployee && !isTeamMember) return { forbidden: true };
+  if (service.status === "done" || service.status === "cancelled") {
+    return { locked: true, service: publicService(service) };
+  }
+
+  const description = normalizeText(payload.description);
+  if (!description) return { invalidDescription: true };
+
+  const employee = db.employees.find((item) => item.id === employeeId);
+  const createdAt = now();
+  service.serviceUpdates = Array.isArray(service.serviceUpdates) ? service.serviceUpdates : [];
+  service.serviceUpdates.push({
+    id: id("upd"),
+    description,
+    employeeId,
+    employeeName: employee?.name || "Funcionário",
+    createdAt
+  });
+  service.updatedAt = createdAt;
+  await save(db);
+  await addEvent("service.update_added", `${employee?.name || "Funcionário"} registrou uma atualização em ${service.code}.`, {
+    serviceId: service.id,
+    employeeId,
+    createdAt
+  });
+  return publicService(service);
+}
+
 async function priceService(serviceId, adminId, payload = {}) {
   const service = db.services.find((item) => item.id === serviceId);
   if (!service) return null;
@@ -1158,6 +1206,7 @@ module.exports = {
   deleteCancelledService,
   startService,
   finishService,
+  addServiceUpdate,
   priceService,
   receiveServicePayment,
   markServiceSentToClient,

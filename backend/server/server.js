@@ -581,6 +581,18 @@ app.post("/api/services/:id/finish", auth("employee"), asyncRoute(async (req, re
   res.json(store.employeeService(result, req.user.id));
 }));
 
+app.post("/api/services/:id/updates", auth("employee"), asyncRoute(async (req, res) => {
+  const result = await store.addServiceUpdate(req.params.id, req.user.id, req.body || {});
+  if (!result) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (result.forbidden) return res.status(403).json({ error: "Serviço não atribuído a este funcionário." });
+  if (result.locked) return res.status(409).json({ error: "Não é possível registrar mudanças em um serviço encerrado." });
+  if (result.invalidDescription) return res.status(400).json({ error: "Descreva a alteração antes de salvar." });
+
+  broadcastService("service:updated", result, `${req.user.name} registrou uma atualização em ${result.code}.`);
+  emitDashboard();
+  res.status(201).json(store.employeeService(result, req.user.id));
+}));
+
 app.patch("/api/services/:id/price", auth("admin"), asyncRoute(async (req, res) => {
   const result = await store.priceService(req.params.id, req.user.id, req.body || {});
   if (!result) return res.status(404).json({ error: "Serviço não encontrado." });

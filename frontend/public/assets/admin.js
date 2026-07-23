@@ -1668,6 +1668,16 @@ function serviceCard(service) {
         : ""
     }
 
+    ${
+      service.serviceUpdates?.length
+        ? `
+        <div class="service-note">
+          <strong>Atualizações do funcionário</strong>
+          ${service.serviceUpdates.map((update) => `<p><b>${escapeHTML(update.employeeName || "Funcionário")}</b> - ${escapeHTML(shortDate(update.createdAt))}<br>${escapeHTML(update.description || "")}</p>`).join("")}
+        </div>`
+        : ""
+    }
+
     <div class="service-details">
 
     <button
