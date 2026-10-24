@@ -92,7 +92,7 @@ function ensureSpace(doc, needed = 80) {
 function drawHeader(doc, title, subtitle) {
   doc.font("Helvetica-Bold").fontSize(18).fillColor("#17211f").text(title);
   doc.font("Helvetica").fontSize(10).fillColor("#5f6f69").text(subtitle);
-  doc.font("Helvetica").fontSize(10).text("EG Automações Services");
+  doc.font("Helvetica").fontSize(10).text("Order Service");
   doc.moveDown();
   doc.fillColor("#17211f").fontSize(11);
 }
@@ -125,20 +125,22 @@ function drawServicesTable(doc, db, services, options) {
   });
 }
 
-function drawSignature(doc, service) {
+async function drawSignature(doc, service, mediaLoader = null) {
   ensureSpace(doc, 170);
   doc.font("Helvetica-Bold").fontSize(13).text("Assinatura");
   doc.moveDown(0.4);
-  if (!service.clientSignature?.imageDataUrl) {
+  if (!service.clientSignature?.imageDataUrl && !service.clientSignature?.storageKey && !service.clientSignature?.objectKey) {
     doc.font("Helvetica").fontSize(10).text("Sem assinatura registrada.");
     return;
   }
 
   writeLine(doc, "Assinante", service.clientSignature.signerName || "Cliente");
-  const base64 = String(service.clientSignature.imageDataUrl).split(",")[1];
-  if (base64) {
+  const image = mediaLoader
+    ? await mediaLoader.load(service.clientSignature)
+    : imageBufferFromDataUrl(service.clientSignature.imageDataUrl);
+  if (image) {
     try {
-      doc.image(Buffer.from(base64, "base64"), { fit: [260, 90] });
+      doc.image(image, { fit: [260, 90] });
     } catch (_error) {
       doc.font("Helvetica").text("Assinatura registrada, mas não foi possível inserir a imagem no PDF.");
     }
@@ -150,16 +152,16 @@ function imageBufferFromDataUrl(dataUrl) {
   return base64 ? Buffer.from(base64, "base64") : null;
 }
 
-function drawServicePhoto(doc, title, photo) {
+async function drawServicePhoto(doc, title, photo, mediaLoader = null) {
   ensureSpace(doc, 220);
   doc.font("Helvetica-Bold").fontSize(12).text(title);
   doc.moveDown(0.3);
-  if (!photo?.imageDataUrl) {
+  if (!photo?.imageDataUrl && !photo?.storageKey && !photo?.objectKey) {
     doc.font("Helvetica").fontSize(10).text("Foto não registrada.");
     return;
   }
 
-  const image = imageBufferFromDataUrl(photo.imageDataUrl);
+  const image = mediaLoader ? await mediaLoader.load(photo) : imageBufferFromDataUrl(photo.imageDataUrl);
   if (!image) {
     doc.font("Helvetica").fontSize(10).text("Foto registrada, mas não foi possível inserir a imagem.");
     return;
@@ -174,12 +176,12 @@ function drawServicePhoto(doc, title, photo) {
   doc.moveDown();
 }
 
-function drawServicePhotos(doc, service) {
+async function drawServicePhotos(doc, service, mediaLoader = null) {
   ensureSpace(doc, 80);
   doc.font("Helvetica-Bold").fontSize(13).text("Fotos antes e depois");
   doc.moveDown(0.5);
-  drawServicePhoto(doc, "Foto antes", service.servicePhotos?.before);
-  drawServicePhoto(doc, "Foto depois", service.servicePhotos?.after);
+  await drawServicePhoto(doc, "Foto antes", service.servicePhotos?.before, mediaLoader);
+  await drawServicePhoto(doc, "Foto depois", service.servicePhotos?.after, mediaLoader);
 }
 
 async function createClientReportPdf({ db, clientId, filters = {}, options = {} }) {
@@ -223,7 +225,7 @@ async function createClientReportPdf({ db, clientId, filters = {}, options = {} 
   return { fileName, buffer: await done };
 }
 
-async function createServiceReportPdf({ db, serviceId, options = {} }) {
+async function createServiceReportPdf({ db, serviceId, options = {}, mediaLoader = null }) {
   const service = db.services.find((item) => item.id === serviceId);
   if (!service) {
     const error = new Error("Serviço não encontrado.");
@@ -262,8 +264,8 @@ async function createServiceReportPdf({ db, serviceId, options = {} }) {
   if (options.financeNotes) writeLine(doc, "Obs. financeira", service.financeNotes || "");
   doc.moveDown();
 
-  if (options.signature) drawSignature(doc, service);
-  if (options.photos !== false) drawServicePhotos(doc, service);
+  if (options.signature) await drawSignature(doc, service, mediaLoader);
+  if (options.photos !== false) await drawServicePhotos(doc, service, mediaLoader);
   if (options.clientHistory && allClientServices.length) {
     ensureSpace(doc, 100);
     doc.moveDown();

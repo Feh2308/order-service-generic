@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">EG Automacoes Services</string>
-    <string name="title_activity_main">EG Automacoes Services</string>
-    <string name="package_name">com.egautomacoes.services</string>
-    <string name="custom_url_scheme">com.egautomacoes.services</string>
+    <string name="app_name">Gestão de Serviços</string>
+    <string name="title_activity_main">Gestão de Serviços</string>
+    <string name="package_name">com.generic.servicemanager</string>
+    <string name="custom_url_scheme">com.generic.servicemanager</string>
 </resources>

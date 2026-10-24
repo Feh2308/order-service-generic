@@ -1,5 +1,5 @@
 (function () {
-  const SERVER_URL_KEY = "egServerUrl";
+  const SERVER_URL_KEY = "serviceServerUrl";
   const REMOTE_PROTOCOLS = new Set(["file:", "capacitor:", "app:"]);
 
   function isHttpOrigin() {
@@ -11,7 +11,7 @@
   }
 
   function getBuildServerUrl() {
-    const value = cleanServerUrl(window.__EG_VITE_API_URL__);
+    const value = cleanServerUrl(window.__SERVICE_MANAGER_API_URL__);
     if (!value || value.includes("%VITE_API_URL%")) return "";
     return value;
   }
@@ -115,7 +115,7 @@
     setServerUrl(input.value);
   }
 
-  window.EGRuntime = {
+  window.ServiceRuntime = {
     SERVER_URL_KEY,
     apiUrl,
     cleanServerUrl,

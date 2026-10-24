@@ -12,7 +12,7 @@ const DEFAULT_SOURCE = path.resolve(
   "backups",
   "db-json-backup-20260620-125804.json"
 );
-const DEFAULT_TABLE = process.env.DB_STORAGE_TABLE || "eg_services_store";
+const DEFAULT_TABLE = process.env.DB_STORAGE_TABLE || "service_manager_store";
 const DEFAULT_KEY = process.env.DB_STORAGE_KEY || "default";
 
 const WORKFLOW_STATUS = {

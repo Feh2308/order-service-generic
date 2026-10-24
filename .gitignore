@@ -18,6 +18,7 @@ backend/data/*.json.*
 backend/uploads/
 backend/storage/
 backups/
+backend/scripts/relational-migration/output/
 
 npm-debug.log*
 *.log

@@ -1,6 +1,6 @@
 {
-  "appId": "com.egautomacoes.services",
-  "appName": "EG Automacoes Services",
+  "appId": "com.generic.servicemanager",
+  "appName": "Order Service",
   "webDir": "frontend/dist",
   "server": {
     "androidScheme": "https",

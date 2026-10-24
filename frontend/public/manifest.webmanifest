@@ -1,6 +1,6 @@
 {
-  "name": "EG Automações Services",
-  "short_name": "EG Services",
+  "name": "Order Service",
+  "short_name": "Serviços",
   "description": "Sistema de envio, acompanhamento e finalização de serviços em tempo real.",
   "start_url": "/",
   "display": "standalone",

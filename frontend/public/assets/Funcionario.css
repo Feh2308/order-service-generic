@@ -1,5 +1,5 @@
 /* ==========================================================
-   EG AUTOMAÇÕES SERVICES
+   ORDER SERVICE
    ADMIN.CSS
    PARTE 1.1
    Variables • Reset • Login
@@ -8,6 +8,23 @@
 /* ==========================================================
    VARIABLES
 ========================================================== */
+
+.employee-open-service .panel-body {
+  display: grid;
+  gap: 14px;
+}
+
+.employee-service-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 560px) {
+  .employee-service-form-row {
+    grid-template-columns: 1fr;
+  }
+}
 
 :root{
 

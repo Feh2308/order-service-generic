@@ -50,8 +50,8 @@ function makeAdmin() {
   return {
     id: id("admin"),
     role: "admin",
-    name: "Administrador EG",
-    email: "admin@egautomacoes.local",
+    name: "Administrador Demo",
+    email: "admin@exemplo.local",
     passwordSalt: password.salt,
     passwordHash: password.hash,
     createdAt: now()
@@ -535,9 +535,9 @@ async function emergencyResetAdmin(payload = {}) {
   const admin = db.admins[0];
   if (!admin) return null;
 
-  const nextEmail = normalizeText(payload.email).toLowerCase() || "admin@egautomacoes.local";
+  const nextEmail = normalizeText(payload.email).toLowerCase() || "admin@exemplo.local";
   const nextPassword = normalizeText(payload.password) || "admin123";
-  const nextName = normalizeText(payload.name) || admin.name || "Administrador EG";
+  const nextName = normalizeText(payload.name) || admin.name || "Administrador Demo";
   const secret = hashSecret(nextPassword);
 
   admin.name = nextName;
@@ -673,6 +673,23 @@ async function updateClient(clientId, payload) {
   await save(db);
   await addEvent("client.updated", `Cliente ${client.name} atualizado.`, { clientId: client.id });
   return publicClient(client);
+}
+
+async function deleteClient(clientId) {
+  const index = db.clients.findIndex((item) => item.id === clientId);
+  if (index < 0) return null;
+
+  const client = db.clients[index];
+  const linkedServices = db.services.filter((service) => service.clientId === clientId);
+  if (linkedServices.length) {
+    return { hasServices: true, serviceCount: linkedServices.length, client: publicClient(client) };
+  }
+
+  const deletedClient = publicClient(client);
+  db.clients.splice(index, 1);
+  db.events = db.events.filter((event) => event?.details?.clientId !== clientId);
+  await save(db);
+  return deletedClient;
 }
 
 async function updateEmployee(employeeId, payload) {
@@ -863,6 +880,7 @@ async function createService(payload, adminId) {
 async function updateService(serviceId, payload) {
   const service = db.services.find((item) => item.id === serviceId);
   if (!service) return null;
+  const wasCancelled = service.status === "cancelled";
 
   const fields = ["title", "customer", "date", "time", "location", "address", "notes"];
   fields.forEach((field) => {
@@ -877,9 +895,18 @@ async function updateService(serviceId, payload) {
   }
   if (payload.materials !== undefined) service.materials = normalizeServiceMaterials(payload.materials);
   if (!service.teamId && Array.isArray(payload.employeeIds)) service.employeeIds = normalizeEmployeeIds(payload.employeeIds);
+  if (wasCancelled) {
+    service.status = "scheduled";
+    service.cancelledAt = null;
+    service.workflowStatus = "";
+  }
   service.updatedAt = now();
   await save(db);
-  await addEvent("service.updated", `Serviço ${service.code} atualizado.`, { serviceId: service.id });
+  await addEvent(
+    wasCancelled ? "service.restored" : "service.updated",
+    wasCancelled ? `Serviço ${service.code} recuperado e atualizado.` : `Serviço ${service.code} atualizado.`,
+    { serviceId: service.id }
+  );
   return publicService(service);
 }
 
@@ -1146,6 +1173,41 @@ async function receiveServicePayment(serviceId, adminId, payload = {}) {
   return publicService(service);
 }
 
+async function reopenServicePayment(serviceId, adminId) {
+  const service = db.services.find((item) => item.id === serviceId);
+  if (!service) return null;
+  if (!isServicePriced(service)) return { invalidStatus: true, service: publicService(service) };
+  if (!isServiceReceived(service)) return { alreadyPending: true, service: publicService(service) };
+
+  const previousPayment = {
+    paymentStatus: service.paymentStatus,
+    receivedAt: service.receivedAt,
+    receivedBy: service.receivedBy,
+    paymentMethod: service.paymentMethod,
+    paymentNotes: service.paymentNotes
+  };
+
+  service.paymentStatus = "PENDING";
+  service.receivedAt = null;
+  service.receivedBy = null;
+  service.paymentMethod = "";
+  service.paymentNotes = "";
+  service.updatedAt = now();
+  await save(db);
+
+  await addEvent("service.payment_reopened", `Pagamento do serviço ${service.code} corrigido para a receber.`, {
+    serviceId: service.id,
+    adminId,
+    previousPaymentStatus: previousPayment.paymentStatus,
+    nextPaymentStatus: service.paymentStatus,
+    previousReceivedAt: previousPayment.receivedAt,
+    previousReceivedBy: previousPayment.receivedBy,
+    previousPaymentMethod: previousPayment.paymentMethod,
+    previousPaymentNotes: previousPayment.paymentNotes
+  });
+  return publicService(service);
+}
+
 async function markServiceSentToClient(serviceId, adminId, payload = {}) {
   const service = db.services.find((item) => item.id === serviceId);
   if (!service) return null;
@@ -1188,6 +1250,7 @@ module.exports = {
   findEmployeeByPin,
   createClient,
   updateClient,
+  deleteClient,
   createMaterial,
   updateMaterial,
   findMaterialByCode,
@@ -1209,7 +1272,9 @@ module.exports = {
   addServiceUpdate,
   priceService,
   receiveServicePayment,
+  reopenServicePayment,
   markServiceSentToClient,
+  addEvent,
   workflowStatusFor,
   get db() {
     if (!db) throw new Error("Store ainda não inicializado.");

@@ -1,5 +1,5 @@
 const state = {
-  token: localStorage.getItem("egAdminToken"),
+  token: localStorage.getItem("orderServiceAdminToken"),
   user: null,
   socket: null,
   employees: [],
@@ -12,6 +12,7 @@ const state = {
   editingServiceId: null,
   editingClientId: null,
   editingMaterialId: null,
+  externalReportPdf: null,
   editingTeamId: null,
   pricingServiceId: null,
   activeTab: "dashboard",
@@ -102,9 +103,8 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 function refreshIcons() {
-  window.EGIcons?.refresh();
+  window.ServiceIcons?.refresh();
 }
-
 function escapeHTML(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -333,7 +333,7 @@ async function requestNotifications() {
 }
 
 async function api(path, options = {}) {
-  if (window.EGRuntime?.requiresServerUrl()) {
+  if (window.ServiceRuntime?.requiresServerUrl()) {
     throw new Error("Informe a URL do servidor central antes de entrar.");
   }
   const headers = { ...(options.headers || {}) };
@@ -345,7 +345,7 @@ async function api(path, options = {}) {
     body = JSON.stringify(body);
   }
 
-  const url = window.EGRuntime?.apiUrl(path) || path;
+  const url = window.ServiceRuntime?.apiUrl(path) || path;
   const response = await fetch(url, { ...options, headers, body });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -355,7 +355,7 @@ async function api(path, options = {}) {
 }
 
 async function apiBlob(path, options = {}) {
-  if (window.EGRuntime?.requiresServerUrl()) {
+  if (window.ServiceRuntime?.requiresServerUrl()) {
     throw new Error("Informe a URL do servidor central antes de entrar.");
   }
   const headers = { ...(options.headers || {}) };
@@ -367,7 +367,7 @@ async function apiBlob(path, options = {}) {
     body = JSON.stringify(body);
   }
 
-  const url = window.EGRuntime?.apiUrl(path) || path;
+  const url = window.ServiceRuntime?.apiUrl(path) || path;
   const response = await fetch(url, { ...options, headers, body });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -393,14 +393,34 @@ function downloadBlob(blob, fileName) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+async function downloadReportWithExternalPdf(result, externalFile = null) {
+  if (!externalFile) {
+    downloadBlob(result.blob, result.fileName);
+    return;
+  }
+
+  try {
+    const PdfDocument = window.PDFLib?.PDFDocument;
+    if (!PdfDocument) throw new Error("Biblioteca de PDF indisponível.");
+    const report = await PdfDocument.load(await result.blob.arrayBuffer());
+    const attachment = await PdfDocument.load(await externalFile.arrayBuffer());
+    const pages = await report.copyPages(attachment, attachment.getPageIndices());
+    pages.forEach((page) => report.addPage(page));
+    const mergedBytes = await report.save();
+    downloadBlob(new Blob([mergedBytes], { type: "application/pdf" }), result.fileName);
+  } catch (_error) {
+    throw new Error("Não foi possível unir o PDF externo. Verifique se ele não está protegido por senha ou corrompido.");
+  }
+}
+
 function showLogin() {
-  localStorage.removeItem("egAdminToken");
+  localStorage.removeItem("orderServiceAdminToken");
   state.token = null;
   state.user = null;
   if (state.socket) state.socket.disconnect();
   $("#loginView").classList.remove("hidden");
   $("#appView").classList.add("hidden");
-  window.EGRuntime?.fillConnectionForm($("#adminLoginForm"));
+  window.ServiceRuntime?.fillConnectionForm($("#adminLoginForm"));
   refreshIcons();
 }
 
@@ -410,6 +430,37 @@ function showApp() {
   $("#adminName").textContent = state.user?.name || "Administrador";
   $("#adminProfileName").textContent = state.user?.name || "Administrador";
   renderSettings();
+}
+
+function isLocalPresentation() {
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+
+function setDemoLoginVisible(visible) {
+  const button = $("#demoLoginButton");
+  const hint = $("#demoLoginHint");
+  if (!button || !hint) return;
+  button.hidden = !visible;
+  hint.hidden = !visible;
+}
+
+async function loginToDemo() {
+  const button = $("#demoLoginButton");
+  const stopLoading = setButtonLoading(button, true);
+  try {
+    const { token, user } = await api("/api/auth/demo", { method: "POST" });
+    state.token = token;
+    state.user = user;
+    localStorage.setItem("orderServiceAdminToken", token);
+    showApp();
+    connectSocket();
+    await loadAll();
+  } catch (error) {
+    setDemoLoginVisible(false);
+    toast("Apresentação", error.message, "error");
+  } finally {
+    stopLoading();
+  }
 }
 
 function switchTab(tab) {
@@ -428,7 +479,7 @@ function switchTab(tab) {
 
 function connectSocket() {
   if (state.socket) state.socket.disconnect();
-  const socketUrl = window.EGRuntime?.socketUrl();
+  const socketUrl = window.ServiceRuntime?.socketUrl();
   state.socket = socketUrl ? io(socketUrl, { auth: { token: state.token } }) : io({ auth: { token: state.token } });
 
   state.socket.on("connect_error", () => {
@@ -445,7 +496,7 @@ function connectSocket() {
     renderServices();
     renderClientHistory();
     toast("Serviço enviado", message || `${service.code} criado.`);
-    browserNotify("EG Automações Services", message || `${service.code} criado.`);
+    browserNotify("Order Service", message || `${service.code} criado.`);
   });
 
   state.socket.on("service:updated", ({ service, message }) => {
@@ -453,7 +504,7 @@ function connectSocket() {
     renderServices();
     renderClientHistory();
     toast("Serviço atualizado", message || `${service.code} atualizado.`);
-    browserNotify("EG Automações Services", message || `${service.code} atualizado.`);
+    browserNotify("Order Service", message || `${service.code} atualizado.`);
   });
 
   state.socket.on("service:deleted", ({ service, message }) => {
@@ -472,6 +523,12 @@ function connectSocket() {
   state.socket.on("client:updated", async ({ message }) => {
     await loadClients();
     toast("Clientes", message || "Cliente atualizado.");
+  });
+
+  state.socket.on("client:deleted", async ({ message }) => {
+    await loadClients();
+    renderClientHistory();
+    toast("Clientes", message || "Cliente excluído definitivamente.");
   });
 
   state.socket.on("material:updated", async ({ message }) => {
@@ -652,7 +709,7 @@ function renderSettings() {
   }
   const server = $("#settingsServerUrl");
   if (server) {
-    server.textContent = window.EGRuntime?.getServerUrl?.() || "Servidor não definido";
+    server.textContent = window.ServiceRuntime?.getServerUrl?.() || "Servidor não definido";
   }
 }
 
@@ -977,7 +1034,7 @@ function buildReportHtml(service) {
     <header>
       <div>
         <h1>Relatório de serviço</h1>
-        <p><strong>EG Automacoes Services</strong></p>
+        <p><strong>Order Service</strong></p>
         <p class="muted">${escapeHTML(service.code)} - ${escapeHTML(service.title || "")}</p>
       </div>
       <div>
@@ -1164,7 +1221,7 @@ function printShell(title, subtitle, content) {
     <header>
       <h1>${escapeHTML(title)}</h1>
       <p class="muted">${escapeHTML(subtitle)}</p>
-      <p><strong>EG Automacoes Services</strong></p>
+      <p><strong>Order Service</strong></p>
     </header>
     ${content}
   </main>
@@ -1288,7 +1345,7 @@ function buildClientPdfHtml(filters, options) {
   return printShell(`Relatório do cliente ${client?.name || ""}`, periodLabel(filters), content);
 }
 
-async function downloadClientReportPdf(filters, options) {
+async function downloadClientReportPdf(filters, options, externalFile = null) {
   const result = await apiBlob("/api/reports/client-pdf", {
     method: "POST",
     body: {
@@ -1297,11 +1354,11 @@ async function downloadClientReportPdf(filters, options) {
       options
     }
   });
-  downloadBlob(result.blob, result.fileName);
+  await downloadReportWithExternalPdf(result, externalFile);
   return result.fileName;
 }
 
-async function downloadServiceReportPdf(serviceId, options) {
+async function downloadServiceReportPdf(serviceId, options, externalFile = null) {
   const result = await apiBlob("/api/reports/service-pdf", {
     method: "POST",
     body: {
@@ -1309,7 +1366,7 @@ async function downloadServiceReportPdf(serviceId, options) {
       options
     }
   });
-  downloadBlob(result.blob, result.fileName);
+  await downloadReportWithExternalPdf(result, externalFile);
   return result.fileName;
 }
 
@@ -1322,6 +1379,9 @@ function openPdfOptions(type, serviceId = "") {
   if (type === "service" && !state.services.some((service) => service.id === serviceId)) return;
 
   state.pdfRequest = { type, serviceId };
+  state.externalReportPdf = null;
+  $("#externalReportPdfInput").value = "";
+  renderExternalReportPdfStatus();
   $("#pdfOptionsTitle").textContent = type === "client" ? "Gerar relatório do cliente" : "Gerar PDF da OS";
   $("#pdfOptionsSubtitle").textContent = "Escolha as informações que vão aparecer no PDF.";
   $("#pdfOptionsFields").innerHTML = fields
@@ -1340,7 +1400,43 @@ function openPdfOptions(type, serviceId = "") {
 
 function closePdfOptions() {
   state.pdfRequest = null;
+  state.externalReportPdf = null;
+  $("#externalReportPdfInput").value = "";
+  renderExternalReportPdfStatus();
   $("#pdfOptionsModal").classList.add("hidden");
+}
+
+function renderExternalReportPdfStatus() {
+  const status = $("#externalReportPdfStatus");
+  if (!status) return;
+  status.textContent = state.externalReportPdf
+    ? `${state.externalReportPdf.name} (${Math.ceil(state.externalReportPdf.size / 1024)} KB) - uso local`
+    : "Nenhum arquivo selecionado.";
+}
+
+function selectExternalReportPdf(input) {
+  const file = input.files?.[0] || null;
+  if (!file) {
+    state.externalReportPdf = null;
+    renderExternalReportPdfStatus();
+    return;
+  }
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    input.value = "";
+    state.externalReportPdf = null;
+    renderExternalReportPdfStatus();
+    toast("PDF", "Selecione um arquivo PDF.", "error");
+    return;
+  }
+  if (file.size > 25 * 1024 * 1024) {
+    input.value = "";
+    state.externalReportPdf = null;
+    renderExternalReportPdfStatus();
+    toast("PDF", "Para evitar travamentos no celular, use um PDF de até 25 MB.", "error");
+    return;
+  }
+  state.externalReportPdf = file;
+  renderExternalReportPdfStatus();
 }
 
 function openPriceModal(serviceId) {
@@ -1424,6 +1520,26 @@ async function receivePayment(serviceId) {
   }
 }
 
+async function reopenPayment(serviceId) {
+  const service = state.services.find((item) => item.id === serviceId);
+  if (!service || !isServiceReceived(service)) return;
+  const message = `Voltar o pagamento de ${service.code} para \"A receber\"?\n\nO valor e a precificação da OS serão mantidos.`;
+  if (!window.confirm(message)) return;
+
+  try {
+    const updated = await api(`/api/services/${serviceId}/reopen-payment`, {
+      method: "POST"
+    });
+    upsertService(updated);
+    renderServices();
+    renderClientHistory();
+    await loadDashboard();
+    toast("Financeiro", `${updated.code} voltou para a receber.`);
+  } catch (error) {
+    toast("Financeiro", error.message, "error");
+  }
+}
+
 async function generateSelectedPdf() {
   if (!state.pdfRequest) return;
   const stopLoading = setButtonLoading($("#generatePdfButton"), true);
@@ -1438,7 +1554,7 @@ async function generateSelectedPdf() {
     const service = state.services.find((item) => item.id === state.pdfRequest.serviceId);
     if (service) {
       try {
-        const fileName = await downloadServiceReportPdf(service.id, options);
+        const fileName = await downloadServiceReportPdf(service.id, options, state.externalReportPdf);
         toast("PDF", `PDF baixado: ${fileName}.`);
       } catch (error) {
         toast("PDF", error.message, "error");
@@ -1451,7 +1567,7 @@ async function generateSelectedPdf() {
   if (state.pdfRequest.type === "client") {
     const filters = clientHistoryFilters();
     try {
-      const fileName = await downloadClientReportPdf(filters, options);
+      const fileName = await downloadClientReportPdf(filters, options, state.externalReportPdf);
       toast("PDF", `PDF baixado: ${fileName}.`);
     } catch (error) {
       toast("PDF", error.message, "error");
@@ -1475,8 +1591,7 @@ function actionMenuButton(action, serviceId, icon, label, extraClass = "", disab
 function serviceActionMenu(service, { canEdit, canCancel, canReport, canPrice, needsPrice }) {
   if (service.status === "cancelled") {
     const cancelledActions = [
-      canEdit ? actionMenuButton("edit-service", service.id, "pencil", "Editar") : "",
-      actionMenuButton("duplicate-service", service.id, "copy", "Duplicar"),
+      canEdit ? actionMenuButton("edit-service", service.id, "rotate-ccw", "Recuperar e editar") : "",
       actionMenuButton("delete-service", service.id, "trash-2", "Excluir definitivamente", "danger-menu-item")
     ].filter(Boolean);
 
@@ -1490,7 +1605,6 @@ function serviceActionMenu(service, { canEdit, canCancel, canReport, canPrice, n
 
   const actions = [
     canEdit ? actionMenuButton("edit-service", service.id, "pencil", "Editar") : "",
-    actionMenuButton("duplicate-service", service.id, "copy", "Duplicar"),
     actionMenuButton("finish-service", service.id, "check-circle-2", "Finalizar", "", true),
     canPrice ? actionMenuButton("add-price", service.id, "dollar-sign", needsPrice ? "Adicionar preço" : "Editar preço") : "",
     canCancel ? actionMenuButton("cancel-service", service.id, "x-circle", "Cancelar", "danger-menu-item") : "",
@@ -1959,9 +2073,6 @@ function handleServiceAction(button) {
     const service = state.services.find((item) => item.id === button.dataset.id);
     if (service) fillServiceForm(service);
   }
-  if (button.dataset.action === "duplicate-service") {
-    duplicateService(button.dataset.id);
-  }
   if (button.dataset.action === "cancel-service") {
     cancelService(button.dataset.id);
   }
@@ -2094,6 +2205,7 @@ function clientHistoryRow(service) {
           priced
             ? `<div class="history-card-actions">
                 ${receivable ? `<button class="primary-button" type="button" data-action="receive-payment" data-id="${escapeHTML(service.id)}"><i data-lucide="badge-check"></i>Marcar recebido</button>` : ""}
+                ${received ? `<button class="ghost-button" type="button" data-action="reopen-payment" data-id="${escapeHTML(service.id)}"><i data-lucide="undo-2"></i>Voltar para a receber</button>` : ""}
                 <button class="ghost-button" type="button" data-action="history-open-report" data-id="${escapeHTML(service.id)}"><i data-lucide="file-text"></i>PDF da OS</button>
               </div>`
             : `<span class="history-unavailable">PDF após preço</span>`
@@ -2321,6 +2433,7 @@ function renderClients() {
                 <button class="${client.active ? "danger-button" : "primary-button"}" type="button" data-action="toggle-client" data-id="${escapeHTML(client.id)}" data-active="${client.active}">
                   <i data-lucide="${client.active ? "power-off" : "power"}"></i>${client.active ? "Desativar" : "Ativar"}
                 </button>
+                <button class="danger-button" type="button" data-action="delete-client" data-id="${escapeHTML(client.id)}"><i data-lucide="trash-2"></i>Excluir definitivamente</button>
               </div>
             </div>
           `
@@ -2398,6 +2511,7 @@ function clearServiceForm() {
 }
 
 function fillServiceForm(service) {
+  const isCancelled = service.status === "cancelled";
   state.editingServiceId = service.id;
   const form = $("#serviceForm");
   form.elements.id.value = service.id;
@@ -2411,8 +2525,10 @@ function fillServiceForm(service) {
   form.elements.address.value = service.address || "";
   form.elements.notes.value = service.notes || "";
   state.serviceMaterials = (service.materials || []).map((item) => ({ ...item }));
-  $("#serviceFormTitle").textContent = `Editar ${service.code}`;
-  $("#submitServiceButton").innerHTML = `<i data-lucide="save"></i>Salvar alterações`;
+  $("#serviceFormTitle").textContent = isCancelled ? `Recuperar e editar ${service.code}` : `Editar ${service.code}`;
+  $("#submitServiceButton").innerHTML = isCancelled
+    ? `<i data-lucide="rotate-ccw"></i>Salvar e recuperar`
+    : `<i data-lucide="save"></i>Salvar alterações`;
   renderClientSelect();
   form.elements.clientId.value = service.clientId || "";
   renderTeamSelect();
@@ -2618,6 +2734,7 @@ async function handleServiceSubmit(event) {
   const stopLoading = startSubmitLoading(event);
   const payload = servicePayload();
   const editingId = state.editingServiceId;
+  const restoringService = editingId && state.services.find((service) => service.id === editingId)?.status === "cancelled";
   const path = editingId ? `/api/services/${editingId}` : "/api/services";
   const method = editingId ? "PATCH" : "POST";
 
@@ -2627,7 +2744,7 @@ async function handleServiceSubmit(event) {
     renderServices();
     renderClientHistory();
     await loadDashboard();
-    toast("Serviço", editingId ? "Serviço atualizado." : "Serviço enviado aos funcionários.");
+    toast("Serviço", restoringService ? "Serviço recuperado e enviado para a lista de agendados." : editingId ? "Serviço atualizado." : "Serviço enviado aos funcionários.");
     clearServiceForm();
     setServiceFormOpen(false);
   } catch (error) {
@@ -2642,6 +2759,26 @@ async function toggleClient(clientId, active) {
     await api(`/api/clients/${clientId}`, { method: "PATCH", body: { active } });
     await loadClients();
     await loadDashboard();
+  } catch (error) {
+    toast("Clientes", error.message, "error");
+  }
+}
+
+async function deleteClient(clientId) {
+  const client = state.clients.find((item) => item.id === clientId);
+  if (!client) return;
+  const confirmed = window.confirm(`Excluir definitivamente o cliente ${client.name}? Esta ação não pode ser desfeita.`);
+  if (!confirmed) return;
+
+  try {
+    await api(`/api/clients/${clientId}`, { method: "DELETE" });
+    if ($("#historyClientFilter")?.value === clientId) {
+      $("#historyClientFilter").value = "";
+      renderClientHistory();
+    }
+    await loadClients();
+    await loadDashboard();
+    toast("Clientes", "Cliente excluído definitivamente.");
   } catch (error) {
     toast("Clientes", error.message, "error");
   }
@@ -2851,14 +2988,14 @@ function bindEvents() {
   $("#adminLoginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const stopLoading = startSubmitLoading(event);
-    window.EGRuntime?.persistConnectionForm(event.currentTarget);
+    window.ServiceRuntime?.persistConnectionForm(event.currentTarget);
     const credentials = Object.fromEntries(new FormData(event.currentTarget).entries());
     delete credentials.serverUrl;
     try {
       const { token, user } = await api("/api/auth/admin", { method: "POST", body: credentials });
       state.token = token;
       state.user = user;
-      localStorage.setItem("egAdminToken", token);
+      localStorage.setItem("orderServiceAdminToken", token);
       showApp();
       connectSocket();
       await loadAll();
@@ -2868,6 +3005,8 @@ function bindEvents() {
       stopLoading();
     }
   });
+
+  $("#demoLoginButton")?.addEventListener("click", loginToDemo);
 
   $$(".nav-button").forEach((button) => {
     button.addEventListener("click", () => switchTab(button.dataset.tab));
@@ -2940,6 +3079,7 @@ function bindEvents() {
   $("#closePdfOptionsButton").addEventListener("click", closePdfOptions);
   $("#cancelPdfOptionsButton").addEventListener("click", closePdfOptions);
   $("#generatePdfButton").addEventListener("click", generateSelectedPdf);
+  $("#externalReportPdfInput").addEventListener("change", (event) => selectExternalReportPdf(event.currentTarget));
   $("#pdfOptionsModal").addEventListener("click", (event) => {
     if (event.target.id === "pdfOptionsModal") closePdfOptions();
   });
@@ -2999,6 +3139,9 @@ function bindEvents() {
     if (button.dataset.action === "receive-payment") {
       receivePayment(button.dataset.id);
     }
+    if (button.dataset.action === "reopen-payment") {
+      reopenPayment(button.dataset.id);
+    }
     if (button.dataset.action === "add-price") {
       openPriceModal(button.dataset.id);
     }
@@ -3033,6 +3176,9 @@ function bindEvents() {
     }
     if (button.dataset.action === "toggle-client") {
       toggleClient(button.dataset.id, button.dataset.active !== "true");
+    }
+    if (button.dataset.action === "delete-client") {
+      deleteClient(button.dataset.id);
     }
   });
 
@@ -3080,10 +3226,17 @@ function bindEvents() {
 
 async function boot() {
   bindEvents();
-  window.EGRuntime?.fillConnectionForm($("#adminLoginForm"));
+  setDemoLoginVisible(isLocalPresentation());
+  window.ServiceRuntime?.fillConnectionForm($("#adminLoginForm"));
   refreshIcons();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }
+
+  const demoRequested = new URLSearchParams(window.location.search).get("demo") === "1";
+  if (demoRequested && isLocalPresentation()) {
+    await loginToDemo();
+    return;
   }
 
   if (!state.token) {
@@ -3124,7 +3277,7 @@ function setSidebarCollapsed(collapsed) {
   if (!appShell || !drawerToggle) return;
   appShell.classList.toggle("sidebar-collapsed", collapsed);
   drawerToggle.setAttribute("aria-expanded", String(!collapsed));
-  localStorage.setItem("egAdminSidebarCollapsed", collapsed ? "1" : "0");
+  localStorage.setItem("orderServiceAdminSidebarCollapsed", collapsed ? "1" : "0");
   refreshIcons();
 }
 
@@ -3157,5 +3310,5 @@ if (drawerToggle && sidebar && overlay) {
 }
 
 if (drawerToggle && appShell) {
-  setSidebarCollapsed(localStorage.getItem("egAdminSidebarCollapsed") === "1");
+  setSidebarCollapsed(localStorage.getItem("orderServiceAdminSidebarCollapsed") === "1");
 }

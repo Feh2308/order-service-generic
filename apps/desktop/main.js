@@ -3,10 +3,10 @@ const http = require("http");
 const path = require("path");
 const { app, BrowserWindow, shell } = require("electron");
 
-const DEFAULT_SERVER_URL = process.env.EG_SERVER_URL || "http://localhost:3000";
-const DEFAULT_ROLE = process.env.EG_APP_ROLE || "home";
-const LOAD_REMOTE_UI = process.env.EG_LOAD_REMOTE === "1";
-const DESKTOP_PORT = Number(process.env.EG_DESKTOP_PORT || 38652);
+const DEFAULT_SERVER_URL = process.env.SERVICE_SERVER_URL || "http://localhost:3000";
+const DEFAULT_ROLE = process.env.SERVICE_APP_ROLE || "home";
+const LOAD_REMOTE_UI = process.env.SERVICE_LOAD_REMOTE === "1";
+const DESKTOP_PORT = Number(process.env.SERVICE_DESKTOP_PORT || 38652);
 const PUBLIC_DIR = path.join(__dirname, "..", "..", "frontend", "dist");
 
 let staticServer;
@@ -78,10 +78,10 @@ async function createWindow() {
     minWidth: 390,
     minHeight: 640,
     title: DEFAULT_ROLE === "admin"
-      ? "EG Services Admin"
+      ? "Order Service - Administração"
       : DEFAULT_ROLE === "funcionario" || DEFAULT_ROLE === "employee"
-        ? "EG Services Funcionario"
-        : "EG Automacoes Services",
+        ? "Order Service - Equipe"
+        : "Order Service",
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,

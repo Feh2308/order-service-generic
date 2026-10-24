@@ -1,4 +1,4 @@
-package com.egautomacoes.services;
+package com.generic.servicemanager;
 
 import com.getcapacitor.BridgeActivity;
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#2563eb">
-    <title>Funcionário | EG Automações Services</title>
+    <title>Equipe | Order Service</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/assets/Funcionario.css?v=20260713-optional-proof-single-photo">
@@ -13,9 +13,9 @@
     <main id="loginView" class="login-shell">
       <section class="login-card">
         <div class="brand">
-          <img src="/assets/logo.svg" alt="EG Automações Services">
+          <img src="/assets/order-service-logo.png" alt="Order Service">
           <span>
-            <strong class="brand-title">EG Automações Services</strong>
+            <strong class="brand-title">Order Service</strong>
             <small class="brand-subtitle">App do funcionário</small>
           </span>
         </div>
@@ -54,9 +54,9 @@
 
 </button>
         <div class="brand">
-          <img src="/assets/logo.svg" alt="EG Automações Services">
+          <img src="/assets/order-service-logo.png" alt="Order Service">
           <span>
-            <strong class="brand-title">EG Automações Services</strong>
+            <strong class="brand-title">Order Service</strong>
             <small id="employeeName" class="brand-subtitle">Funcionário</small>
           </span>
         </div>
@@ -98,6 +98,48 @@
             <strong id="doneCount">0</strong>
           </section>
         </div>
+
+        <section class="panel employee-open-service">
+          <div class="panel-header">
+            <div>
+              <h2>Abrir ordem de serviço</h2>
+              <p>A nova OS ficará atribuída a você. Preço e envio ao cliente ficam com o administrador.</p>
+            </div>
+          </div>
+          <form id="employeeServiceForm" class="panel-body grid">
+            <label class="field">
+              <span>Cliente</span>
+              <input class="input" name="customer" maxlength="160" placeholder="Nome do cliente" required>
+            </label>
+            <label class="field">
+              <span>Serviço</span>
+              <input class="input" name="title" maxlength="160" placeholder="Ex.: Instalação de equipamento" required>
+            </label>
+            <div class="employee-service-form-row">
+              <label class="field">
+                <span>Data</span>
+                <input class="input" name="date" type="date" required>
+              </label>
+              <label class="field">
+                <span>Horário</span>
+                <input class="input" name="time" type="time" required>
+              </label>
+            </div>
+            <label class="field">
+              <span>Local</span>
+              <input class="input" name="location" maxlength="160" placeholder="Ex.: Unidade, setor ou sala" required>
+            </label>
+            <label class="field">
+              <span>Endereço</span>
+              <input class="input" name="address" maxlength="240" placeholder="Endereço do atendimento" required>
+            </label>
+            <label class="field">
+              <span>Observações</span>
+              <textarea class="input" name="notes" rows="3" maxlength="2000" placeholder="Detalhes para a equipe"></textarea>
+            </label>
+            <button class="primary-button" type="submit"><i data-lucide="plus"></i>Abrir OS</button>
+          </form>
+        </section>
 
         <section class="panel employee-personal-summary anchor-target">
           <div class="panel-header">

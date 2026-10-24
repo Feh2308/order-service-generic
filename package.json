@@ -1,8 +1,8 @@
 {
-  "name": "eg-automacoes-services",
+  "name": "service-manager",
   "version": "1.0.0",
   "private": true,
-  "description": "Monorepo EG Automacoes Services com frontend Vite e backend Express/Socket.IO.",
+  "description": "Sistema genérico de gestão de serviços com frontend Vite e backend Express/Socket.IO.",
   "workspaces": [
     "frontend",
     "backend"
@@ -15,8 +15,8 @@
     "start:backend": "npm --prefix backend start",
     "check": "npm --prefix backend run check && npm --prefix frontend run check && node --check apps/desktop/main.js",
     "desktop:home": "npm run build:frontend && electron apps/desktop/main.js",
-    "desktop:admin": "npm run build:frontend && set EG_APP_ROLE=admin&& electron apps/desktop/main.js",
-    "desktop:funcionario": "npm run build:frontend && set EG_APP_ROLE=funcionario&& electron apps/desktop/main.js",
+    "desktop:admin": "npm run build:frontend && set SERVICE_APP_ROLE=admin&& electron apps/desktop/main.js",
+    "desktop:funcionario": "npm run build:frontend && set SERVICE_APP_ROLE=funcionario&& electron apps/desktop/main.js",
     "desktop:build": "npm run build:frontend && electron-builder --win",
     "android:add": "cap add android",
     "android:sync": "npm run build:frontend && cap sync android",
@@ -24,8 +24,8 @@
     "android:open": "cap open android"
   },
   "keywords": [
-    "eg",
-    "automacoes",
+    "servicos",
+    "gestao",
     "services",
     "servicos",
     "socket.io"
@@ -33,9 +33,9 @@
   "author": "",
   "license": "UNLICENSED",
   "build": {
-    "appId": "com.egautomacoes.services",
-    "productName": "EG Automacoes Services",
-    "executableName": "EGServices",
+    "appId": "com.generic.servicemanager",
+    "productName": "Gestão de Serviços",
+    "executableName": "ServiceManager",
     "disableAsarIntegrity": true,
     "extraMetadata": {
       "main": "apps/desktop/main.js"

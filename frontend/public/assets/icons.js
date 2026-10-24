@@ -9,6 +9,6 @@
     });
   }
 
-  window.EGIcons = { refresh };
+  window.ServiceIcons = { refresh };
   document.addEventListener("DOMContentLoaded", refresh);
 })();

@@ -90,6 +90,11 @@ function getToken(req) {
   return header.slice("Bearer ".length);
 }
 
+function isLoopbackRequest(req) {
+  const address = String(req.socket?.remoteAddress || "").replace(/^::ffff:/, "");
+  return ["127.0.0.1", "::1", "localhost"].includes(address);
+}
+
 function auth(role) {
   return (req, res, next) => {
     const token = getToken(req);
@@ -237,6 +242,19 @@ app.post("/api/auth/admin", (req, res) => {
   res.json({ token, user });
 });
 
+app.post("/api/auth/demo", (req, res) => {
+  if (!config.DEMO_MODE || config.NODE_ENV === "production" || !isLoopbackRequest(req)) {
+    return res.status(404).json({ error: "Modo demonstração desativado." });
+  }
+
+  const admin = store.db.admins[0];
+  if (!admin) return res.status(503).json({ error: "Administrador de demonstração não encontrado." });
+
+  const user = store.publicAdmin(admin);
+  const token = makeToken(user);
+  res.json({ token, user, demo: true });
+});
+
 app.post("/api/auth/employee", (req, res) => {
   const { pin } = req.body || {};
   const employee = store.findEmployeeByPin(pin);
@@ -264,7 +282,7 @@ app.post("/api/admin/emergency-reset", asyncRoute(async (req, res) => {
     return res.status(400).json({ error: "A nova senha precisa ter pelo menos 6 caracteres." });
   }
 
-  const email = String(req.body?.email || "admin@egautomacoes.local").trim().toLowerCase();
+  const email = String(req.body?.email || "admin@exemplo.local").trim().toLowerCase();
   if (!email || !email.includes("@")) {
     return res.status(400).json({ error: "Informe um e-mail valido." });
   }
@@ -423,6 +441,21 @@ app.patch("/api/clients/:id", auth("admin"), asyncRoute(async (req, res) => {
   res.json(client);
 }));
 
+app.delete("/api/clients/:id", auth("admin"), asyncRoute(async (req, res) => {
+  const result = await store.deleteClient(req.params.id);
+  if (!result) return res.status(404).json({ error: "Cliente não encontrado." });
+  if (result.hasServices) {
+    return res.status(409).json({
+      error: `Este cliente possui ${result.serviceCount} OS vinculada(s). Desative o cadastro para preservar o histórico.`,
+      client: result.client
+    });
+  }
+
+  io.to("admins").emit("client:deleted", { client: result, message: "Cliente excluído definitivamente." });
+  emitDashboard();
+  res.json(result);
+}));
+
 app.get("/api/materials", auth("admin"), (_req, res) => {
   const materials = store.db.materials
     .slice()
@@ -505,11 +538,16 @@ app.get("/api/services", auth(), (req, res) => {
   res.json(store.listServicesFor(req.user, req.query || {}));
 });
 
-app.post("/api/services", auth("admin"), asyncRoute(async (req, res) => {
-  const validation = validateService(req.body || {});
+app.post("/api/services", auth(), asyncRoute(async (req, res) => {
+  // Funcionários podem abrir OS, mas ela fica atribuída somente ao próprio
+  // funcionário. Dados de preço, equipe e demais responsáveis vêm do servidor.
+  const payload = req.user.role === "admin"
+    ? req.body || {}
+    : { ...(req.body || {}), clientId: "", teamId: "", employeeIds: [req.user.id] };
+  const validation = validateService(payload);
   if (validation) return res.status(400).json({ error: validation });
 
-  const service = await store.createService(req.body, req.user.id);
+  const service = await store.createService(payload, req.user.id);
   const message = service.team
     ? `Novo serviço ${service.code} enviado para a equipe ${service.team.name}.`
     : `Novo serviço ${service.code} enviado.`;
@@ -619,6 +657,21 @@ app.post("/api/services/:id/receive-payment", auth("admin"), asyncRoute(async (r
   res.json(result);
 }));
 
+app.post("/api/services/:id/reopen-payment", auth("admin"), asyncRoute(async (req, res) => {
+  const result = await store.reopenServicePayment(req.params.id, req.user.id);
+  if (!result) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (result.invalidStatus) {
+    return res.status(409).json({ error: "Este serviço ainda não possui preço definido.", service: result.service });
+  }
+  if (result.alreadyPending) {
+    return res.status(409).json({ error: "Este serviço já está marcado como a receber.", service: result.service });
+  }
+
+  broadcastService("service:updated", result, `Pagamento do serviço ${result.code} voltou para a receber.`);
+  emitDashboard();
+  res.json(result);
+}));
+
 app.post("/api/services/:id/sent-to-client", auth("admin"), asyncRoute(async (req, res) => {
   const result = await store.markServiceSentToClient(req.params.id, req.user.id, req.body || {});
   if (!result) return res.status(404).json({ error: "Serviço não encontrado." });
@@ -689,7 +742,7 @@ async function start() {
     console.log(`${config.APP_NAME} rodando em ${config.PUBLIC_URL || `http://localhost:${config.PORT}`}`);
     console.log(`Node escutando em http://${config.HOST}:${config.PORT}`);
     console.log(`Armazenamento atual: ${config.DB_CLIENT} (${config.DB_CLIENT === "postgres" ? config.DB_STORAGE_TABLE : store.DATA_FILE})`);
-    console.log("Admin inicial: admin@egautomacoes.local / admin123");
+    console.log("Admin inicial: admin@exemplo.local / admin123");
   });
 }
 

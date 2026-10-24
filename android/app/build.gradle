@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.egautomacoes.services"
+    namespace = "com.generic.servicemanager"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.egautomacoes.services"
+        applicationId "com.generic.servicemanager"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

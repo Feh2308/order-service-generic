@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#2563eb">
-    <title>Admin | EG Automações Services</title>
+    <title>Admin | Order Service</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/assets/Admin.css?v=20260711-cancelled-menu-final">
@@ -13,9 +13,9 @@
     <main id="loginView" class="login-shell">
       <section class="login-card">
         <div class="brand">
-          <img src="/assets/logo.svg" alt="EG Automações Services">
+          <img src="/assets/order-service-logo.png" alt="Order Service">
           <span>
-            <strong class="brand-title">EG Automações Services</strong>
+            <strong class="brand-title">Order Service</strong>
             <small class="brand-subtitle">Painel administrativo</small>
           </span>
         </div>
@@ -39,6 +39,10 @@
             <small>Use esta URL no APK/EXE para acessar os mesmos dados de qualquer dispositivo.</small>
           </details>
           <button class="primary-button" type="submit"><i data-lucide="log-in"></i>Entrar</button>
+          <button id="demoLoginButton" class="ghost-button demo-login-button" type="button" hidden>
+            <i data-lucide="presentation"></i>Entrar na apresentação sem senha
+          </button>
+          <small id="demoLoginHint" class="demo-login-hint" hidden>Modo demonstração local ativo.</small>
         </form>
       </section>
     </main>
@@ -49,11 +53,11 @@
     <div class="sidebar-header">
 
         <div class="brand">
-            <img src="/assets/logo.svg" alt="EG Automações Services">
+            <img src="/assets/order-service-logo.png" alt="Order Service">
 
             <span>
                 <strong class="brand-title">
-                    EG Automações Services
+                    Order Service
                 </strong>
 
                 <small class="brand-subtitle">
@@ -607,7 +611,7 @@
             <div class="panel-header">
               <div>
                 <h2>Serviços cancelados</h2>
-                <p>OS canceladas ficam fora da lista principal e só aparecem aqui.</p>
+                <p>OS canceladas ficam fora da lista principal. Edite quando necessário ou exclua definitivamente.</p>
               </div>
               <button id="clearCancelledServicesButton" class="danger-button" type="button"><i data-lucide="trash-2"></i>Limpar todos</button>
             </div>
@@ -726,7 +730,15 @@
           </div>
           <button id="closePdfOptionsButton" class="ghost-button icon-button" type="button" aria-label="Fechar"><i data-lucide="x"></i></button>
         </div>
-        <div id="pdfOptionsFields" class="modal-body checkbox-list"></div>
+        <div class="modal-body">
+          <div id="pdfOptionsFields" class="checkbox-list"></div>
+          <label class="field full external-pdf-field">
+            <span>Anexar PDF externo (opcional)</span>
+            <input id="externalReportPdfInput" class="input" type="file" accept="application/pdf,.pdf">
+            <small>O arquivo será unido ao relatório somente neste dispositivo. Ele não será enviado nem armazenado no sistema.</small>
+            <span id="externalReportPdfStatus" class="field-help">Nenhum arquivo selecionado.</span>
+          </label>
+        </div>
         <div class="modal-actions">
           <button id="cancelPdfOptionsButton" class="ghost-button" type="button"><i data-lucide="x-circle"></i>Cancelar</button>
           <button id="generatePdfButton" class="primary-button" type="button"><i data-lucide="file-down"></i>Gerar PDF</button>
@@ -764,6 +776,7 @@
     <div id="toastZone" class="toast-zone" aria-live="polite"></div>
     <script src="/vendor/socket.io/socket.io.min.js"></script>
     <script src="/vendor/lucide/lucide.min.js"></script>
+    <script src="/vendor/pdf-lib/pdf-lib.min.js"></script>
     <script type="module" src="/env.js?v=20260620-ordem-cache-fix"></script>
     <script type="module" src="/assets/runtime.js?v=20260620-ordem-cache-fix"></script>
     <script type="module" src="/assets/icons.js?v=20260620-ordem-cache-fix"></script>

@@ -1,12 +1,12 @@
 const state = {
-  token: localStorage.getItem("egEmployeeToken"),
+  token: localStorage.getItem("orderServiceEmployeeToken"),
   user: null,
   socket: null,
   services: [],
   pendingStartLocations: loadPendingStartLocations(),
   pendingFinalLocations: loadPendingFinalLocations(),
-  pendingBeforePhotos: loadPendingPhotos("egPendingBeforePhotos"),
-  pendingAfterPhotos: loadPendingPhotos("egPendingAfterPhotos"),
+  pendingBeforePhotos: loadPendingPhotos("orderServicePendingBeforePhotos"),
+  pendingAfterPhotos: loadPendingPhotos("orderServicePendingAfterPhotos"),
   reportPreferences: loadReportPreferences(),
   signaturePads: new Map(),
   clockTimer: null
@@ -22,9 +22,8 @@ const statusLabels = {
 const $ = (selector) => document.querySelector(selector);
 
 function refreshIcons() {
-  window.EGIcons?.refresh();
+  window.ServiceIcons?.refresh();
 }
-
 function escapeHTML(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -33,7 +32,6 @@ function escapeHTML(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-
 function formatDateTime(service) {
   if (!service.date) return "Sem data";
   const value = new Date(`${service.date}T${service.time || "00:00"}:00`);
@@ -86,26 +84,26 @@ function formatCurrency(value) {
 
 function loadPendingStartLocations() {
   try {
-    return JSON.parse(localStorage.getItem("egPendingStartLocations") || "{}");
+    return JSON.parse(localStorage.getItem("orderServicePendingStartLocations") || "{}");
   } catch {
     return {};
   }
 }
 
 function savePendingStartLocations() {
-  localStorage.setItem("egPendingStartLocations", JSON.stringify(state.pendingStartLocations));
+  localStorage.setItem("orderServicePendingStartLocations", JSON.stringify(state.pendingStartLocations));
 }
 
 function loadPendingFinalLocations() {
   try {
-    return JSON.parse(localStorage.getItem("egPendingFinalLocations") || "{}");
+    return JSON.parse(localStorage.getItem("orderServicePendingFinalLocations") || "{}");
   } catch {
     return {};
   }
 }
 
 function savePendingFinalLocations() {
-  localStorage.setItem("egPendingFinalLocations", JSON.stringify(state.pendingFinalLocations));
+  localStorage.setItem("orderServicePendingFinalLocations", JSON.stringify(state.pendingFinalLocations));
 }
 
 function loadPendingPhotos(key) {
@@ -126,14 +124,14 @@ function savePendingPhotos(key, photos) {
 
 function loadReportPreferences() {
   try {
-    return JSON.parse(localStorage.getItem("egReportPreferences") || "{}");
+    return JSON.parse(localStorage.getItem("orderServiceReportPreferences") || "{}");
   } catch {
     return {};
   }
 }
 
 function saveReportPreferences() {
-  localStorage.setItem("egReportPreferences", JSON.stringify(state.reportPreferences));
+  localStorage.setItem("orderServiceReportPreferences", JSON.stringify(state.reportPreferences));
 }
 
 function getPendingStartLocation(serviceId) {
@@ -163,7 +161,7 @@ function getPendingBeforePhoto(serviceId) {
 function setPendingBeforePhoto(serviceId, photo) {
   if (photo) state.pendingBeforePhotos[serviceId] = photo;
   else delete state.pendingBeforePhotos[serviceId];
-  savePendingPhotos("egPendingBeforePhotos", state.pendingBeforePhotos);
+  savePendingPhotos("orderServicePendingBeforePhotos", state.pendingBeforePhotos);
 }
 
 function getPendingAfterPhoto(serviceId) {
@@ -173,7 +171,7 @@ function getPendingAfterPhoto(serviceId) {
 function setPendingAfterPhoto(serviceId, photo) {
   if (photo) state.pendingAfterPhotos[serviceId] = photo;
   else delete state.pendingAfterPhotos[serviceId];
-  savePendingPhotos("egPendingAfterPhotos", state.pendingAfterPhotos);
+  savePendingPhotos("orderServicePendingAfterPhotos", state.pendingAfterPhotos);
 }
 
 function getReportPreference(serviceId, service) {
@@ -321,7 +319,7 @@ async function requestNotifications() {
 }
 
 async function api(path, options = {}) {
-  if (window.EGRuntime?.requiresServerUrl()) {
+  if (window.ServiceRuntime?.requiresServerUrl()) {
     throw new Error("Informe a URL do servidor central antes de entrar.");
   }
   const headers = { ...(options.headers || {}) };
@@ -333,7 +331,7 @@ async function api(path, options = {}) {
     body = JSON.stringify(body);
   }
 
-  const url = window.EGRuntime?.apiUrl(path) || path;
+  const url = window.ServiceRuntime?.apiUrl(path) || path;
   const response = await fetch(url, { ...options, headers, body });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -343,13 +341,13 @@ async function api(path, options = {}) {
 }
 
 function showLogin() {
-  localStorage.removeItem("egEmployeeToken");
+  localStorage.removeItem("orderServiceEmployeeToken");
   state.token = null;
   state.user = null;
   if (state.socket) state.socket.disconnect();
   $("#loginView").classList.remove("hidden");
   $("#appView").classList.add("hidden");
-  window.EGRuntime?.fillConnectionForm($("#employeeLoginForm"));
+  window.ServiceRuntime?.fillConnectionForm($("#employeeLoginForm"));
   refreshIcons();
 }
 
@@ -373,7 +371,7 @@ function startClock() {
 
 function connectSocket() {
   if (state.socket) state.socket.disconnect();
-  const socketUrl = window.EGRuntime?.socketUrl();
+  const socketUrl = window.ServiceRuntime?.socketUrl();
   state.socket = socketUrl ? io(socketUrl, { auth: { token: state.token } }) : io({ auth: { token: state.token } });
 
   state.socket.on("connect_error", () => {
@@ -979,17 +977,36 @@ async function logout() {
 }
 
 function bindEvents() {
+  $("#employeeServiceForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const stopLoading = startSubmitLoading(event);
+    const payload = Object.fromEntries(new FormData(form).entries());
+    try {
+      const service = await api("/api/services", { method: "POST", body: payload });
+      upsertService(service);
+      renderServices();
+      form.reset();
+      toast("Ordem de serviço", `${service.code} aberta e atribuída a você.`);
+      document.querySelector("#scheduledSection")?.scrollIntoView({ behavior: "smooth" });
+    } catch (error) {
+      toast("Ordem de serviço", error.message || "Não foi possível abrir a OS.", "error");
+    } finally {
+      stopLoading();
+    }
+  });
+
   $("#employeeLoginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const stopLoading = startSubmitLoading(event);
-    window.EGRuntime?.persistConnectionForm(event.currentTarget);
+    window.ServiceRuntime?.persistConnectionForm(event.currentTarget);
     const credentials = Object.fromEntries(new FormData(event.currentTarget).entries());
     delete credentials.serverUrl;
     try {
       const { token, user } = await api("/api/auth/employee", { method: "POST", body: credentials });
       state.token = token;
       state.user = user;
-      localStorage.setItem("egEmployeeToken", token);
+      localStorage.setItem("orderServiceEmployeeToken", token);
       showApp();
       connectSocket();
       await loadAll();
@@ -1082,7 +1099,7 @@ function bindEvents() {
 
 async function boot() {
   bindEvents();
-  window.EGRuntime?.fillConnectionForm($("#employeeLoginForm"));
+  window.ServiceRuntime?.fillConnectionForm($("#employeeLoginForm"));
   refreshIcons();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -1160,5 +1177,4 @@ if (menuButton && menu) {
         });
 
     });
-
 }
